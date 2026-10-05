@@ -1,14 +1,8 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// 1. Try to load from backend/.env directly
-dotenv.config({ path: path.resolve(__dirname, '../../../backend/.env') });
-// 2. Also try relative from current dir
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Load from backend/.env if exists locally
+dotenv.config({ path: path.resolve(process.cwd(), 'backend/.env') });
 dotenv.config();
 
 

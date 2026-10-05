@@ -1,12 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import supabase from '../config/supabase.js';
 import { logAudit } from '../services/auditService.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = path.resolve(__dirname, '../../data');
+const DATA_DIR = path.resolve(process.cwd(), 'backend/data');
 const DATA_FILE = path.join(DATA_DIR, 'bulletins.json');
 
 // Ensure data folder and bulletins.json exists as fallback storage

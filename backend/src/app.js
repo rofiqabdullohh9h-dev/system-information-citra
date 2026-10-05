@@ -60,11 +60,8 @@ app.use('/api/bulletins', bulletinRoutes);
 
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const frontendDistPath = path.resolve(__dirname, '../../frontend/dist');
+const frontendDistPath = path.resolve(process.cwd(), 'frontend/dist');
 
 // If frontend/dist exists, serve static assets and handle SPA routing
 if (fs.existsSync(frontendDistPath)) {
