@@ -50,7 +50,27 @@ app.use('/api/export', exportRoutes);
 app.use('/api/audit-logs', auditRoutes);
 app.use('/api/bulletins', bulletinRoutes);
 
-// 404 Handler
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const frontendDistPath = path.resolve(__dirname, '../../frontend/dist');
+
+// If frontend/dist exists, serve static assets and handle SPA routing
+if (fs.existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
+
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+      return next();
+    }
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  });
+}
+
+// 404 Handler for unmatched API routes
 app.use((req, res) => {
   res.status(404).json({
     success: false,

@@ -1,5 +1,5 @@
 // API Service client for connecting frontend to backend
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
 
 const getHeaders = (isFormData = false) => {
   const token = localStorage.getItem('siap_token');
