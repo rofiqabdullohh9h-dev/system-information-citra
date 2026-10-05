@@ -40,11 +40,12 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [currentUser, setPortalMode]);
 
-  // Sync data from database / API when component mounts, on window focus/visibility, and on polling interval
+  // Sync data on mount, window focus / visibility change, and gentle background polling
   useEffect(() => {
+    // Initial fetch on mount
     fetchData();
 
-    // Re-sync immediately when user switches focus to this browser tab or wakes the phone
+    // Re-sync when user returns to this browser tab or wakes the phone
     const handleSync = () => {
       if (!document.hidden) {
         fetchData();
@@ -53,10 +54,13 @@ export default function App() {
     window.addEventListener('focus', handleSync);
     document.addEventListener('visibilitychange', handleSync);
 
-    // Continuous real-time auto-polling every 2.5s for snappy multi-pengurus sync
+    // Calm, battery-friendly polling: 30s for admin, 90s for public visitors (only active when tab is visible)
+    const pollIntervalMs = currentUser ? 30000 : 90000;
     const interval = setInterval(() => {
-      fetchData();
-    }, 2500);
+      if (!document.hidden) {
+        fetchData();
+      }
+    }, pollIntervalMs);
 
     return () => {
       window.removeEventListener('focus', handleSync);

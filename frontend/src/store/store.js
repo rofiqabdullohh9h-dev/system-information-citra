@@ -83,27 +83,64 @@ export const useAppStore = create((set, get) => ({
   attendanceDrafts: getSaved('attendanceDrafts', {}),
 
   // =========================================================================
-  // SYNC DENGAN BACKEND / DATABASE (PARALEL & REAL-TIME)
+  // SYNC DENGAN BACKEND / DATABASE (PARALEL, EFISIEN, CEPAT & HEMAT MEMORI)
   // =========================================================================
   fetchData: async (options = {}) => {
     const isManual = options?.manual === true;
+    const now = Date.now();
+
+    // Prevent concurrent fetch requests piling up on slow mobile connections
+    if (useAppStore.__isFetching) {
+      return;
+    }
+
+    // Throttle automatic/background polling (minimal 5 detik antar-pemanggilan otomatis)
+    if (!isManual && useAppStore.__lastFetchTime && now - useAppStore.__lastFetchTime < 5000) {
+      return;
+    }
+
+    useAppStore.__isFetching = true;
+    useAppStore.__lastFetchTime = now;
+
     if (isManual) {
       set({ isLoading: true, apiError: null });
     }
 
     try {
       const user = get().currentUser;
+      const isAdmin = Boolean(user) || get().portalMode === 'admin';
 
-      // Jalankan seluruh pemanggilan API secara paralel (Promise.allSettled) agar super cepat (~150ms)
-      const [catResult, eventResult, jamResult, attResult, bulResult, adminResult, logResult] = await Promise.allSettled([
+      // Smart Selective Query:
+      // Pengunjung publik hanya perlu Categories, Events, dan Bulletins
+      // Jamaah dan Attendance hanya di-fetch bila admin atau saat data awal masih kosong
+      const currentJamaah = get().jamaah;
+      const currentAttendance = get().attendance;
+      const shouldFetchJamaah = isAdmin || currentJamaah.length === 0 || options?.includeAll === true;
+      const shouldFetchAttendance = isAdmin || Object.keys(currentAttendance).length === 0 || options?.includeAll === true;
+
+      // Jalankan seluruh pemanggilan API secara paralel (Promise.allSettled)
+      const [catResult, eventResult, bulResult, jamResult, attResult, adminResult, logResult] = await Promise.allSettled([
         api.getCategories(),
-        api.getEvents(), // Sekarang public GET /api/events selalu bisa diakses tanpa token
-        api.getJamaah(),
-        api.getAllAttendance(),
+        api.getEvents(),
         api.getBulletins(),
+        shouldFetchJamaah ? api.getJamaah() : Promise.resolve(null),
+        shouldFetchAttendance ? api.getAllAttendance() : Promise.resolve(null),
         user ? api.getPengurus() : Promise.resolve(null),
         user ? api.getAuditLogs() : Promise.resolve(null),
       ]);
+
+      const updates = {};
+
+      // Helper pembanding data untuk mencegah trigger re-render virtual DOM yang tidak perlu
+      const hasChanged = (currentData, newData) => {
+        if (!currentData && !newData) return false;
+        if (!currentData || !newData) return true;
+        if (Array.isArray(currentData) && Array.isArray(newData)) {
+          if (currentData.length !== newData.length) return true;
+          if (currentData.length === 0 && newData.length === 0) return false;
+        }
+        return JSON.stringify(currentData) !== JSON.stringify(newData);
+      };
 
       // 1. Categories
       if (catResult.status === 'fulfilled' && catResult.value?.success && Array.isArray(catResult.value.data) && catResult.value.data.length > 0) {
@@ -112,60 +149,84 @@ export const useAppStore = create((set, get) => ({
           color: c.id === 1 ? 'emerald' : c.id === 2 ? 'pink' : c.id === 3 ? 'blue' : c.id === 4 ? 'amber' : 'purple',
           memberCount: c.memberCount || c._count?.members || 0,
         }));
-        set({ categories: formattedCats });
-        saveItem('categories', formattedCats);
+        if (hasChanged(get().categories, formattedCats)) {
+          updates.categories = formattedCats;
+          saveItem('categories', formattedCats);
+        }
       }
 
       // 2. Events (Jadwal Pengajian)
+      let eventsData = null;
       if (eventResult.status === 'fulfilled' && eventResult.value?.success && Array.isArray(eventResult.value.data)) {
-        set({ events: eventResult.value.data });
-        saveItem('events', eventResult.value.data);
+        eventsData = eventResult.value.data;
       } else {
         // Fallback mengambil public events jika ada kendala
         try {
           const pubEv = await api.getPublicEvents();
           if (pubEv?.success && Array.isArray(pubEv.data)) {
-            set({ events: pubEv.data });
-            saveItem('events', pubEv.data);
+            eventsData = pubEv.data;
           }
-        } catch (e) {
+        } catch {
           // ignore
         }
       }
 
-      // 3. Jamaah
-      if (jamResult.status === 'fulfilled' && jamResult.value?.success && Array.isArray(jamResult.value.data)) {
-        set({ jamaah: jamResult.value.data });
-        saveItem('jamaah', jamResult.value.data);
+      if (eventsData && hasChanged(get().events, eventsData)) {
+        updates.events = eventsData;
+        saveItem('events', eventsData);
       }
 
-      // 4. Attendance (Absensi Real-Time)
-      if (attResult.status === 'fulfilled' && attResult.value?.success && attResult.value.data) {
-        set({ attendance: attResult.value.data });
-        saveItem('attendance', attResult.value.data);
-      }
-
-      // 5. Bulletins (Warta & Pengumuman)
+      // 3. Bulletins (Warta & Pengumuman)
       if (bulResult.status === 'fulfilled' && bulResult.value?.success && Array.isArray(bulResult.value.data)) {
-        set({ bulletins: bulResult.value.data });
-        saveItem('bulletins', bulResult.value.data);
+        if (hasChanged(get().bulletins, bulResult.value.data)) {
+          updates.bulletins = bulResult.value.data;
+          saveItem('bulletins', bulResult.value.data);
+        }
+      }
+
+      // 4. Jamaah
+      if (jamResult && jamResult.status === 'fulfilled' && jamResult.value?.success && Array.isArray(jamResult.value.data)) {
+        if (hasChanged(get().jamaah, jamResult.value.data)) {
+          updates.jamaah = jamResult.value.data;
+          saveItem('jamaah', jamResult.value.data);
+        }
+      }
+
+      // 5. Attendance (Absensi Real-Time)
+      if (attResult && attResult.status === 'fulfilled' && attResult.value?.success && attResult.value.data) {
+        if (hasChanged(get().attendance, attResult.value.data)) {
+          updates.attendance = attResult.value.data;
+          saveItem('attendance', attResult.value.data);
+        }
       }
 
       // 6. Admins
-      if (adminResult.status === 'fulfilled' && adminResult.value?.success && Array.isArray(adminResult.value.data)) {
-        set({ admins: adminResult.value.data });
-        saveItem('admins', adminResult.value.data);
+      if (adminResult && adminResult.status === 'fulfilled' && adminResult.value?.success && Array.isArray(adminResult.value.data)) {
+        if (hasChanged(get().admins, adminResult.value.data)) {
+          updates.admins = adminResult.value.data;
+          saveItem('admins', adminResult.value.data);
+        }
       }
 
       // 7. Audit Logs
-      if (logResult.status === 'fulfilled' && logResult.value?.success && Array.isArray(logResult.value.data)) {
-        set({ auditLogs: logResult.value.data });
-        saveItem('auditLogs', logResult.value.data);
+      if (logResult && logResult.status === 'fulfilled' && logResult.value?.success && Array.isArray(logResult.value.data)) {
+        if (hasChanged(get().auditLogs, logResult.value.data)) {
+          updates.auditLogs = logResult.value.data;
+          saveItem('auditLogs', logResult.value.data);
+        }
+      }
+
+      // SATU KALI BATCH STATE UPDATE hanya jika data memang berubah!
+      if (Object.keys(updates).length > 0) {
+        set(updates);
       }
     } catch (err) {
       console.error('Error saat sinkronisasi database:', err);
-      set({ apiError: err.message });
+      if (isManual) {
+        set({ apiError: err.message });
+      }
     } finally {
+      useAppStore.__isFetching = false;
       if (isManual) {
         set({ isLoading: false });
       }

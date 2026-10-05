@@ -66,7 +66,7 @@ export default function AdminHeader({ currentSection, setMobileOpen, onQuickActi
         <div className="flex items-center gap-2.5">
           {/* Tombol Sinkron / Refresh Real-time */}
           <button
-            onClick={() => fetchData()}
+            onClick={() => fetchData({ manual: true })}
             disabled={isLoading}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-all shadow-xs disabled:opacity-50"
             title="Muat ulang & sinkronisasi data terbaru dari database Supabase"

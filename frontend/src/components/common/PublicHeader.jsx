@@ -60,7 +60,7 @@ export default function PublicHeader({ activeTab, setActiveTab }) {
           {/* Right Action: Admin Login or Dashboard Switcher */}
           <div className="flex items-center gap-2 sm:gap-3">
             <button
-              onClick={() => fetchData()}
+              onClick={() => fetchData({ manual: true })}
               disabled={isLoading}
               className="p-2 rounded-xl text-slate-500 hover:text-brand-700 hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200"
               title="Segarkan data pengajian"

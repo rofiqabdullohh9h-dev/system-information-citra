@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Calendar, Clock, MapPin, User, Users, Share2, Eye, Shield, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../../store/store';
 
-export default function EventCard({ event, onOpenDetail }) {
+function EventCard({ event, onOpenDetail }) {
   const categories = useAppStore((state) => state.categories);
   const attendance = useAppStore((state) => state.attendance);
   const jamaahList = useAppStore((state) => state.jamaah);
@@ -22,41 +22,60 @@ export default function EventCard({ event, onOpenDetail }) {
     }
   };
 
-  // Find category names
-  const eventCategories = (event.targetCategoryIds || []).map(id => {
-    return categories.find(c => c.id === id);
-  }).filter(Boolean);
+  // Find category names (memoized)
+  const eventCategories = useMemo(() => {
+    return (event.targetCategoryIds || []).map(id => {
+      return categories.find(c => c.id === id);
+    }).filter(Boolean);
+  }, [event.targetCategoryIds, categories]);
 
-  // Calculate attendance summary based on eligible jamaah (unrecorded automatically counted as ALPA)
   const targetCats = event.targetCategoryIds || [1];
   const targetCatId = targetCats[0] || 1;
   const isGeneral = targetCatId === 1;
   const targetGender = event.target_gender || event.targetGender || 'ALL';
 
-  const eligibleJamaah = jamaahList.filter(person => {
-    if (!person.isActive) return false;
-    if (targetGender === 'L' && person.jenis_kelamin !== 'L') return false;
-    if (targetGender === 'P' && person.jenis_kelamin !== 'P') return false;
-    if (isGeneral) return true;
-    return (person.categoryIds || []).includes(targetCatId);
-  });
+  // Only calculate heavy attendance statistics if show_statistics is enabled
+  const stats = useMemo(() => {
+    if (!event.show_statistics || jamaahList.length === 0) return null;
 
-  const eventAttendance = attendance[event.id] || {};
-  let totalHadir = 0;
-  let totalDaring = 0;
-  let totalIzin = 0;
-  let totalSakit = 0;
-  let totalAlpa = 0;
+    const eligibleJamaah = jamaahList.filter(person => {
+      if (!person.isActive) return false;
+      if (targetGender === 'L' && person.jenis_kelamin !== 'L') return false;
+      if (targetGender === 'P' && person.jenis_kelamin !== 'P') return false;
+      if (isGeneral) return true;
+      return (person.categoryIds || []).includes(targetCatId);
+    });
 
-  eligibleJamaah.forEach(j => {
-    const s = eventAttendance[j.id];
-    if (s === 'HADIR') totalHadir++;
-    else if (s === 'DARING') totalDaring++;
-    else if (s === 'IZIN') totalIzin++;
-    else if (s === 'SAKIT') totalSakit++;
-    else totalAlpa++;
-  });
-  const totalRecord = eligibleJamaah.length;
+    const eventAttendance = attendance[event.id] || {};
+    let totalHadir = 0;
+    let totalDaring = 0;
+    let totalIzin = 0;
+    let totalSakit = 0;
+    let totalAlpa = 0;
+
+    eligibleJamaah.forEach(j => {
+      const s = eventAttendance[j.id];
+      if (s === 'HADIR') totalHadir++;
+      else if (s === 'DARING') totalDaring++;
+      else if (s === 'IZIN') totalIzin++;
+      else if (s === 'SAKIT') totalSakit++;
+      else totalAlpa++;
+    });
+
+    return {
+      totalRecord: eligibleJamaah.length,
+      totalHadir,
+      totalDaring,
+      totalIzin,
+      totalSakit,
+      totalAlpa,
+    };
+  }, [event.show_statistics, event.id, event.targetCategoryIds, targetCatId, isGeneral, targetGender, jamaahList, attendance]);
+
+  const totalRecord = stats?.totalRecord || 0;
+  const totalHadir = stats?.totalHadir || 0;
+  const totalDaring = stats?.totalDaring || 0;
+  const totalIzin = stats?.totalIzin || 0;
 
   // WhatsApp share generator
   const handleShareWA = (e) => {
@@ -202,3 +221,5 @@ export default function EventCard({ event, onOpenDetail }) {
     </div>
   );
 }
+
+export default React.memo(EventCard);

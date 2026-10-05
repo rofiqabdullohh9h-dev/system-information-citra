@@ -28,25 +28,6 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
   const [bulletinSearch, setBulletinSearch] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Auto-sync real-time: fetch data on mount, window focus (ketika beralih browser), dan interval 5 detik
-  useEffect(() => {
-    fetchData();
-
-    const handleFocus = () => {
-      fetchData();
-    };
-    window.addEventListener('focus', handleFocus);
-
-    const interval = setInterval(() => {
-      fetchData();
-    }, 5000);
-
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-      clearInterval(interval);
-    };
-  }, [fetchData]);
-
   // Filter only published events for public portal
   const publishedEvents = useMemo(() => {
     return events.filter(e => e.is_published !== false);
@@ -56,6 +37,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
   const filteredEvents = useMemo(() => {
     return publishedEvents.filter(event => {
       const matchSearch = (
+        !searchQuery ||
         (event.tema && event.tema.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (event.pembicara && event.pembicara.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (event.deskripsi && event.deskripsi.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -73,9 +55,17 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
   // Find the next upcoming event for Hero spotlight
   const nextEvent = publishedEvents[0];
 
-
-  // Category statistics calculation
+  // Category statistics calculation (only computed deeply when on the statistik tab)
   const categoryStats = useMemo(() => {
+    if (activeTab !== 'statistik') {
+      return categories.map(cat => ({
+        ...cat,
+        totalMembers: cat.memberCount || 0,
+        hadirCount: 0,
+        rate: 0,
+      }));
+    }
+
     return categories.map(cat => {
       // Find members of this category
       const members = jamaahList.filter(j => j.categoryIds && j.categoryIds.includes(cat.id));
@@ -100,12 +90,12 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
 
       return {
         ...cat,
-        totalMembers: members.length,
+        totalMembers: members.length || cat.memberCount || 0,
         hadirCount,
         rate
       };
     });
-  }, [categories, jamaahList, attendance]);
+  }, [categories, jamaahList, attendance, activeTab]);
 
   // Pinned bulletins for announcement banner
   const pinnedAnnouncements = useMemo(() => {
