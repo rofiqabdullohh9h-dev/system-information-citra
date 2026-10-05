@@ -13,6 +13,16 @@ const getHeaders = (isFormData = false) => {
   return headers;
 };
 
+const safeJson = async (res) => {
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await res.text();
+    console.warn(`[API Non-JSON Response ${res.status}]:`, text.substring(0, 120));
+    return { success: false, message: `Server error (${res.status})` };
+  }
+  return res.json();
+};
+
 export const api = {
   // Auth
   async login(username, password) {
@@ -21,30 +31,30 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async getMe() {
     const res = await fetch(`${API_BASE_URL}/auth/me`, {
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   // Public Endpoints
   async getPublicEvents() {
     const res = await fetch(`${API_BASE_URL}/public/events`);
-    return res.json();
+    return safeJson(res);
   },
 
   async getPublicEventDetail(id) {
     const res = await fetch(`${API_BASE_URL}/public/events/${id}`);
-    return res.json();
+    return safeJson(res);
   },
 
   async getPublicStatistics() {
     const res = await fetch(`${API_BASE_URL}/public/statistics`);
-    return res.json();
+    return safeJson(res);
   },
 
   // Admin Events
@@ -52,7 +62,7 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/events`, {
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async createEvent(eventData) {
@@ -61,7 +71,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(eventData),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async updateEvent(id, eventData) {
@@ -70,7 +80,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(eventData),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async deleteEvent(id) {
@@ -78,7 +88,7 @@ export const api = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   // Smart Attendance
@@ -86,7 +96,7 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/attendance`, {
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async getEventAttendance(eventId) {
@@ -94,7 +104,7 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/attendance/event/${eventId}`, {
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async recordBulkAttendance(eventId, records, autoAlpa = true) {
@@ -103,7 +113,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify({ eventId, records, autoAlpa }),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   // Jamaah
@@ -112,7 +122,7 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/jamaah?${query}`, {
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async createJamaah(data) {
@@ -121,7 +131,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async updateJamaah(id, data) {
@@ -130,7 +140,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async deleteJamaah(id) {
@@ -138,7 +148,7 @@ export const api = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async bulkImportJamaah(items) {
@@ -147,7 +157,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify({ items }),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   // Categories
@@ -155,7 +165,7 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/categories`, {
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async createCategory(data) {
@@ -164,7 +174,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async updateCategory(id, data) {
@@ -173,7 +183,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async deleteCategory(id) {
@@ -181,7 +191,7 @@ export const api = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   // Pengurus Management (All unified)
@@ -189,7 +199,7 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/admin`, {
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async createPengurus(data) {
@@ -198,7 +208,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async updatePengurus(id, data) {
@@ -207,7 +217,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(data),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async deletePengurus(id) {
@@ -215,7 +225,7 @@ export const api = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async togglePengurusStatus(id) {
@@ -223,7 +233,7 @@ export const api = {
       method: 'PATCH',
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   // Reset Data Uji Coba (Bersihkan data pengujian di database)
@@ -232,7 +242,7 @@ export const api = {
       method: 'POST',
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   // Analytics & Audit
@@ -240,7 +250,7 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/analytics/overview`, {
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async getAuditLogs(params = {}) {
@@ -248,7 +258,7 @@ export const api = {
     const res = await fetch(`${API_BASE_URL}/audit-logs?${query}`, {
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   // Excel Export download url
@@ -260,7 +270,7 @@ export const api = {
   async getBulletins(params = {}) {
     const query = new URLSearchParams(params).toString();
     const res = await fetch(`${API_BASE_URL}/bulletins${query ? `?${query}` : ''}`);
-    return res.json();
+    return safeJson(res);
   },
 
   async createBulletin(bulletinData) {
@@ -269,7 +279,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(bulletinData),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async updateBulletin(id, bulletinData) {
@@ -278,7 +288,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(bulletinData),
     });
-    return res.json();
+    return safeJson(res);
   },
 
   async deleteBulletin(id) {
@@ -286,7 +296,7 @@ export const api = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    return res.json();
+    return safeJson(res);
   },
 };
 
