@@ -1,34 +1,12 @@
-import fs from 'fs';
-import path from 'path';
 import supabase from '../config/supabase.js';
 import { logAudit } from '../services/auditService.js';
 
-const DATA_DIR = path.resolve(process.cwd(), 'backend/data');
-const DATA_FILE = path.join(DATA_DIR, 'bulletins.json');
+// In-memory fallback storage when database is unreachable
+let localBulletinsCache = [];
 
-// Ensure data folder and bulletins.json exists as fallback storage
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-const readLocalBulletins = () => {
-  try {
-    if (fs.existsSync(DATA_FILE)) {
-      const content = fs.readFileSync(DATA_FILE, 'utf-8');
-      return JSON.parse(content || '[]');
-    }
-  } catch (err) {
-    console.warn('Error reading local bulletins:', err.message);
-  }
-  return [];
-};
-
+const readLocalBulletins = () => localBulletinsCache;
 const saveLocalBulletins = (data) => {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Error saving local bulletins:', err.message);
-  }
+  localBulletinsCache = data;
 };
 
 /**
