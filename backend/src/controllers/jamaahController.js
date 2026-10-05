@@ -1,0 +1,323 @@
+import supabase from '../config/supabase.js';
+import { logAudit } from '../services/auditService.js';
+
+export const getAllJamaah = async (req, res, next) => {
+  try {
+    const { search, gender, categoryId } = req.query;
+
+    let query = supabase
+      .from('Jamaah')
+      .select(`
+        id,
+        nama,
+        no_whatsapp,
+        jenis_kelamin,
+        isActive,
+        categories:JamaahCategory(
+          categoryId,
+          category:Category(*)
+        )
+      `)
+      .is('deletedAt', null)
+      .eq('isActive', true)
+      .order('nama', { ascending: true });
+
+    if (gender) {
+      query = query.eq('jenis_kelamin', gender);
+    }
+
+    if (search) {
+      query = query.or(`nama.ilike.%${search}%,no_whatsapp.ilike.%${search}%`);
+    }
+
+    const { data: jamaahList, error } = await query;
+    if (error) throw error;
+
+    let filtered = jamaahList || [];
+
+    // Filter category if provided
+    if (categoryId) {
+      const catId = parseInt(categoryId);
+      filtered = filtered.filter(j => 
+        (j.categories || []).some(c => c.categoryId === catId)
+      );
+    }
+
+    const formatted = filtered.map(j => ({
+      id: j.id,
+      nama: j.nama,
+      no_whatsapp: j.no_whatsapp,
+      jenis_kelamin: j.jenis_kelamin,
+      isActive: j.isActive,
+      categoryIds: (j.categories || []).map(c => c.categoryId),
+      categories: (j.categories || []).map(c => c.category).filter(Boolean),
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formatted,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getJamaahById = async (req, res, next) => {
+  try {
+    const jamaahId = parseInt(req.params.id);
+
+    const { data: jamaah, error } = await supabase
+      .from('Jamaah')
+      .select(`
+        *,
+        categories:JamaahCategory(category:Category(*)),
+        attendances:Attendance(*, event:Event(tema, tanggal))
+      `)
+      .eq('id', jamaahId)
+      .single();
+
+    if (error || !jamaah || jamaah.deletedAt) {
+      return res.status(404).json({
+        success: false,
+        message: 'Data jamaah tidak ditemukan.',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: jamaah,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createJamaah = async (req, res, next) => {
+  try {
+    const { nama, no_whatsapp, jenis_kelamin, categoryIds } = req.body;
+
+    if (!nama || !jenis_kelamin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nama dan jenis kelamin jamaah wajib diisi.',
+      });
+    }
+
+    const gender = jenis_kelamin.toUpperCase() === 'P' ? 'P' : 'L';
+
+    // 1. Insert Jamaah
+    const { data: newJamaah, error: jamaahError } = await supabase
+      .from('Jamaah')
+      .insert([
+        {
+          nama: nama.trim(),
+          no_whatsapp: no_whatsapp ? no_whatsapp.trim() : '',
+          jenis_kelamin: gender,
+          isActive: true,
+        },
+      ])
+      .select()
+      .single();
+
+    if (jamaahError) throw jamaahError;
+
+    // 2. Connect Categories
+    const catIds = categoryIds && categoryIds.length > 0 ? categoryIds : [1];
+    const categoryRows = catIds.map(cid => ({
+      jamaahId: newJamaah.id,
+      categoryId: parseInt(cid),
+    }));
+
+    await supabase.from('JamaahCategory').insert(categoryRows);
+
+    // 3. Audit Log
+    await logAudit({
+      adminId: req.user.id,
+      adminNama: req.user.nama,
+      action: 'CREATE_JAMAAH',
+      target: newJamaah.nama,
+      details: `Pengurus ${req.user.nama} menambahkan data jamaah baru`,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Data jamaah berhasil ditambahkan.',
+      data: {
+        ...newJamaah,
+        categoryIds: catIds,
+      },
+    });
+  } catch (error) {
+
+    next(error);
+  }
+};
+
+export const updateJamaah = async (req, res, next) => {
+  try {
+    const jamaahId = parseInt(req.params.id);
+    const { nama, no_whatsapp, jenis_kelamin, categoryIds } = req.body;
+
+    const { data: existing, error: checkError } = await supabase
+      .from('Jamaah')
+      .select('id, nama, deletedAt')
+      .eq('id', jamaahId)
+      .single();
+
+    if (checkError || !existing || existing.deletedAt) {
+      return res.status(404).json({
+        success: false,
+        message: 'Data jamaah tidak ditemukan.',
+      });
+    }
+
+    // 1. Update Jamaah
+    const updateData = {
+      ...(nama && { nama: nama.trim() }),
+      ...(no_whatsapp !== undefined && { no_whatsapp: no_whatsapp.trim() }),
+      ...(jenis_kelamin && { jenis_kelamin: jenis_kelamin.toUpperCase() === 'P' ? 'P' : 'L' }),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const { data: updated, error: updateError } = await supabase
+      .from('Jamaah')
+      .update(updateData)
+      .eq('id', jamaahId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    // 2. Sync Categories
+    if (categoryIds && Array.isArray(categoryIds)) {
+      await supabase.from('JamaahCategory').delete().eq('jamaahId', jamaahId);
+      const categoryRows = categoryIds.map(cid => ({
+        jamaahId,
+        categoryId: parseInt(cid),
+      }));
+      await supabase.from('JamaahCategory').insert(categoryRows);
+    }
+
+    // 3. Audit Log
+    await logAudit({
+      adminId: req.user.id,
+      adminNama: req.user.nama,
+      action: 'UPDATE_JAMAAH',
+      target: updated.nama,
+      details: `Pengurus ${req.user.nama} memperbarui data jamaah`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Data jamaah berhasil diperbarui.',
+      data: {
+        ...updated,
+        categoryIds: categoryIds || [],
+      },
+    });
+  } catch (error) {
+
+    next(error);
+  }
+};
+
+export const deleteJamaah = async (req, res, next) => {
+  try {
+    const jamaahId = parseInt(req.params.id);
+
+    const { data: jamaah, error: checkError } = await supabase
+      .from('Jamaah')
+      .select('id, nama')
+      .eq('id', jamaahId)
+      .single();
+
+    if (checkError || !jamaah) {
+      return res.status(404).json({
+        success: false,
+        message: 'Data jamaah tidak ditemukan.',
+      });
+    }
+
+    // Soft delete
+    const { error: deleteError } = await supabase
+      .from('Jamaah')
+      .update({ deletedAt: new Date().toISOString() })
+      .eq('id', jamaahId);
+
+    if (deleteError) throw deleteError;
+
+    await logAudit({
+      adminId: req.user.id,
+      adminNama: req.user.nama,
+      action: 'DELETE_JAMAAH',
+      target: jamaah.nama,
+      details: `Pengurus ${req.user.nama} menghapus data jamaah`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Data jamaah berhasil dihapus.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const bulkImportJamaah = async (req, res, next) => {
+  try {
+    const { items } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Daftar data jamaah untuk diimpor tidak boleh kosong.',
+      });
+    }
+
+    let insertedCount = 0;
+
+    for (const item of items) {
+      if (item.nama && item.nama.trim()) {
+        const gender = item.jenis_kelamin && item.jenis_kelamin.toUpperCase().startsWith('P') ? 'P' : 'L';
+        const catIds = item.categoryIds || [1];
+
+        const { data: newJ, error } = await supabase
+          .from('Jamaah')
+          .insert([
+            {
+              nama: item.nama.trim(),
+              no_whatsapp: item.no_whatsapp ? item.no_whatsapp.trim() : '',
+              jenis_kelamin: gender,
+            },
+          ])
+          .select()
+          .single();
+
+        if (!error && newJ) {
+          const categoryRows = catIds.map(cid => ({
+            jamaahId: newJ.id,
+            categoryId: parseInt(cid),
+          }));
+          await supabase.from('JamaahCategory').insert(categoryRows);
+          insertedCount++;
+        }
+      }
+    }
+
+    await logAudit({
+      adminId: req.user.id,
+      adminNama: req.user.nama,
+      action: 'BULK_IMPORT_JAMAAH',
+      target: `${insertedCount} Jamaah`,
+      details: `Pengurus ${req.user.nama} mengimpor ${insertedCount} data jamaah via CSV`,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Berhasil mengimpor ${insertedCount} data jamaah.`,
+      count: insertedCount,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
