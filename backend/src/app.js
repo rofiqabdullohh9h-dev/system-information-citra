@@ -45,18 +45,22 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Mount API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/public', publicRoutes);
-app.use('/api/events', eventRoutes);
-app.use('/api/attendance', attendanceRoutes);
-app.use('/api/jamaah', jamaahRoutes);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/export', exportRoutes);
-app.use('/api/audit-logs', auditRoutes);
-app.use('/api/bulletins', bulletinRoutes);
+// Mount API Routes (support both standard /api and Netlify Functions rewrite path)
+const prefixes = ['/api', '/.netlify/functions/api'];
+
+prefixes.forEach(prefix => {
+  app.use(`${prefix}/auth`, authRoutes);
+  app.use(`${prefix}/public`, publicRoutes);
+  app.use(`${prefix}/events`, eventRoutes);
+  app.use(`${prefix}/attendance`, attendanceRoutes);
+  app.use(`${prefix}/jamaah`, jamaahRoutes);
+  app.use(`${prefix}/categories`, categoryRoutes);
+  app.use(`${prefix}/admin`, adminRoutes);
+  app.use(`${prefix}/analytics`, analyticsRoutes);
+  app.use(`${prefix}/export`, exportRoutes);
+  app.use(`${prefix}/audit-logs`, auditRoutes);
+  app.use(`${prefix}/bulletins`, bulletinRoutes);
+});
 
 import fs from 'fs';
 import path from 'path';
