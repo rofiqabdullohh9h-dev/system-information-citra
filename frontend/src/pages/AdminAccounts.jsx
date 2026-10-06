@@ -2,18 +2,17 @@ import React, { useState } from 'react';
 import {
   Shield,
   Plus,
-  UserCheck,
-  UserX,
   X,
   CheckCircle,
-  AlertTriangle,
-  KeyRound,
   Trash2,
   Edit2,
   Eye,
   EyeOff,
-  Info,
-  Lock
+  Lock,
+  UserCheck,
+  UserX,
+  AlertTriangle,
+  KeyRound
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
 
@@ -25,6 +24,9 @@ export default function AdminAccounts() {
   const toggleAdminStatus = useAppStore((state) => state.toggleAdminStatus);
   const currentUser = useAppStore((state) => state.currentUser);
   const logout = useAppStore((state) => state.logout);
+
+  // Status Developer untuk akun yang sedang login saat ini
+  const isCurrentDev = (currentUser?.username || '').toLowerCase() === 'rofiq' || currentUser?.role === 'Developer';
 
   // Modal states
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -60,7 +62,7 @@ export default function AdminAccounts() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // Open add modal
+  // Open add modal (Semua Pengurus dapat menambahkan)
   const openAddModal = () => {
     setAddForm({
       username: '',
@@ -74,8 +76,16 @@ export default function AdminAccounts() {
     setAddModalOpen(true);
   };
 
-  // Open edit modal
+  // Open edit modal (Semua akun selain Developer dapat diedit, Developer hanya oleh dirinya sendiri)
   const openEditModal = (adm) => {
+    const isTargetDev = (adm.username || '').toLowerCase() === 'rofiq' || adm.role === 'Developer';
+    const isSelf = currentUser && adm.id === currentUser.id;
+
+    if (isTargetDev && !isSelf) {
+      showToast('Akun utama Developer (@rofiq) tidak dapat diubah oleh pengurus lain.');
+      return;
+    }
+
     setEditForm({
       id: adm.id,
       username: adm.username,
@@ -116,7 +126,7 @@ export default function AdminAccounts() {
         role: 'Pengurus',
       });
       setAddModalOpen(false);
-      showToast(`Alhamdulillah! Akun pengurus "${addForm.nama}" berhasil dibuat dengan kata sandi baru.`);
+      showToast(`Akun pengurus "${addForm.nama}" (@${addForm.username.toLowerCase()}) berhasil dibuat.`);
     } catch (err) {
       setErrorMessage(err.message || 'Gagal menambahkan akun pengurus.');
     } finally {
@@ -159,23 +169,29 @@ export default function AdminAccounts() {
     }
   };
 
-  // Handle Delete Admin
+  // Handle Delete Admin (Pengurus lain dapat dihapus, kecuali Developer dan akun sendiri)
   const handleConfirmDelete = async () => {
     if (!deleteConfirmTarget) return;
 
+    const isTargetDev = (deleteConfirmTarget.username || '').toLowerCase() === 'rofiq' || deleteConfirmTarget.role === 'Developer';
+    if (isTargetDev) {
+      showToast('Akun Developer (@rofiq) adalah akun pengembang sistem utama dan tidak dapat dihapus.');
+      setDeleteConfirmTarget(null);
+      return;
+    }
+
     const isSelf = currentUser && deleteConfirmTarget.id === currentUser.id;
+    if (isSelf) {
+      showToast('Anda tidak dapat menghapus akun Anda sendiri.');
+      setDeleteConfirmTarget(null);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await deleteAdmin(deleteConfirmTarget.id);
       setDeleteConfirmTarget(null);
-      if (isSelf) {
-        showToast('Akun Anda berhasil dihapus. Anda akan dialihkan keluar sistem...');
-        setTimeout(async () => {
-          await logout();
-        }, 1200);
-      } else {
-        showToast(`Akun pengurus "${deleteConfirmTarget.nama}" (@${deleteConfirmTarget.username}) berhasil dihapus.`);
-      }
+      showToast(`Akun pengurus "${deleteConfirmTarget.nama}" (@${deleteConfirmTarget.username}) berhasil dihapus.`);
     } catch (err) {
       showToast(`Gagal menghapus: ${err.message}`);
     } finally {
@@ -198,11 +214,11 @@ export default function AdminAccounts() {
         <div className="space-y-1.5 max-w-2xl">
           <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold border border-emerald-500/30">
             <Lock className="w-3.5 h-3.5" />
-            <span>Manajemen Autentikasi Mandiri</span>
+            <span>Manajemen Akun Pengurus</span>
           </div>
           <h2 className="text-xl font-bold tracking-tight">Kelola Akun & Kata Sandi Pengurus</h2>
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Setiap akun pengurus memiliki <strong>username dan kata sandi tersendiri</strong> yang dapat ditentukan saat pembuatan serta diganti/diubah kapan saja. Anda juga dapat menambah atau menghapus akun pengurus sesuai kebutuhan organisasi.
+            Setiap akun pengurus memiliki <strong>username dan kata sandi mandiri</strong>. Akun baru yang dibuat otomatis memiliki hak akses sebagai Pengurus. Akun Developer utama dilindungi secara permanen dari penghapusan atau perubahan oleh akun lain.
           </p>
         </div>
 
@@ -223,7 +239,103 @@ export default function AdminAccounts() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Mobile Admin Cards View */}
+        <div className="sm:hidden divide-y divide-slate-100">
+          {admins.map((adm) => {
+            const isSelf = currentUser && adm.id === currentUser.id;
+            const isTargetDev = (adm.username || '').toLowerCase() === 'rofiq' || adm.role === 'Developer';
+            const canEdit = !isTargetDev || isSelf;
+            const canToggle = !isTargetDev && !isSelf;
+            const canDelete = !isTargetDev && !isSelf;
+
+            return (
+              <div key={adm.id} className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-10 h-10 rounded-full font-bold flex items-center justify-center text-sm shrink-0 ${
+                      isTargetDev ? 'bg-purple-100 text-purple-800' : 'bg-brand-100 text-brand-800'
+                    }`}>
+                      {adm.nama ? adm.nama.charAt(0).toUpperCase() : 'P'}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-900 text-sm truncate flex items-center gap-1.5">
+                        <span>{adm.nama}</span>
+                        {isSelf && (
+                          <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full border border-emerald-300 shrink-0">
+                            Anda
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-brand-700 font-mono font-semibold">@{adm.username}</div>
+                      {adm.email && <div className="text-[11px] text-slate-400 truncate">{adm.email}</div>}
+                    </div>
+                  </div>
+                  <div className="shrink-0 flex flex-col items-end gap-1">
+                    {isTargetDev ? (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-800 border border-purple-200 inline-flex items-center gap-1">
+                        <Shield className="w-3 h-3 text-purple-600" />
+                        Dev
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Pengurus
+                      </span>
+                    )}
+                    {adm.isActive ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                        <UserCheck className="w-3 h-3" /> Aktif
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
+                        <UserX className="w-3 h-3" /> Nonaktif
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                  <span className="text-[11px] text-slate-400">
+                    Login: {adm.lastLogin || '-'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {canToggle && (
+                      <button
+                        onClick={() => toggleAdminStatus(adm.id)}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                          adm.isActive
+                            ? 'bg-amber-50 text-amber-800 active:bg-amber-100'
+                            : 'bg-emerald-50 text-emerald-700 active:bg-emerald-100'
+                        }`}
+                      >
+                        {adm.isActive ? 'Nonaktifkan' : 'Aktifkan'}
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button
+                        onClick={() => openEditModal(adm)}
+                        className="p-2 rounded-lg text-slate-600 hover:text-brand-800 bg-slate-100 active:bg-slate-200 transition-colors"
+                        title={isSelf ? "Ubah profil" : "Ubah profil"}
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button
+                        onClick={() => setDeleteConfirmTarget(adm)}
+                        className="p-2 rounded-lg text-rose-600 hover:text-rose-800 bg-rose-50 active:bg-rose-100 transition-colors"
+                        title="Hapus akun"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left text-xs sm:text-sm">
             <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
               <tr>
@@ -238,11 +350,25 @@ export default function AdminAccounts() {
             <tbody className="divide-y divide-slate-100">
               {admins.map((adm) => {
                 const isSelf = currentUser && adm.id === currentUser.id;
+                const isTargetDev = (adm.username || '').toLowerCase() === 'rofiq' || adm.role === 'Developer';
+
+                // Logika hak aksi:
+                // 1. canEdit: Akun sendiri SELALU bisa diedit. Pengurus lain (selain Developer) bisa diedit. Akun Developer hanya bisa diedit oleh Developer sendiri.
+                const canEdit = !isTargetDev || isSelf;
+
+                // 2. canToggle: Pengurus lain (selain Developer dan akun sendiri) bisa di-toggle statusnya.
+                const canToggle = !isTargetDev && !isSelf;
+
+                // 3. canDelete: Pengurus lain (selain Developer dan akun sendiri) bisa dihapus.
+                const canDelete = !isTargetDev && !isSelf;
+
                 return (
                   <tr key={adm.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-800 font-bold flex items-center justify-center text-xs shrink-0">
+                        <div className={`w-8 h-8 rounded-full font-bold flex items-center justify-center text-xs shrink-0 ${
+                          isTargetDev ? 'bg-purple-100 text-purple-800' : 'bg-brand-100 text-brand-800'
+                        }`}>
                           {adm.nama ? adm.nama.charAt(0).toUpperCase() : 'P'}
                         </div>
                         <div>
@@ -262,9 +388,16 @@ export default function AdminAccounts() {
                       @{adm.username}
                     </td>
                     <td className="px-5 py-4">
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        Pengurus
-                      </span>
+                      {isTargetDev ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200 inline-flex items-center gap-1 shadow-2xs">
+                          <Shield className="w-3 h-3 text-purple-600" />
+                          Developer
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Pengurus
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-4">
                       {adm.isActive ? (
@@ -283,16 +416,18 @@ export default function AdminAccounts() {
                     <td className="px-5 py-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         {/* Tombol Ubah / Reset Password */}
-                        <button
-                          onClick={() => openEditModal(adm)}
-                          className="p-1.5 rounded-lg text-slate-600 hover:text-brand-800 hover:bg-slate-100 transition-colors"
-                          title="Ubah profil / setel kata sandi baru"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={() => openEditModal(adm)}
+                            className="p-1.5 rounded-lg text-slate-600 hover:text-brand-800 hover:bg-slate-100 transition-colors"
+                            title={isSelf ? "Ubah profil / kata sandi akun Anda" : `Ubah profil / reset kata sandi @${adm.username}`}
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
 
-                        {/* Tombol Toggle Status */}
-                        {!isSelf && (
+                        {/* Tombol Toggle Status (Hanya Developer terhadap pengurus lain) */}
+                        {canToggle && (
                           <button
                             onClick={() => toggleAdminStatus(adm.id)}
                             className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
@@ -300,25 +435,35 @@ export default function AdminAccounts() {
                                 ? 'bg-amber-50 text-amber-800 hover:bg-amber-100'
                                 : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                             }`}
-                            title={adm.isActive ? 'Nonaktifkan akun' : 'Aktifkan akun'}
+                            title={adm.isActive ? 'Nonaktifkan akun pengurus' : 'Aktifkan akun pengurus'}
                           >
                             {adm.isActive ? 'Nonaktifkan' : 'Aktifkan'}
                           </button>
                         )}
 
-                        {/* Tombol Hapus Admin */}
-                        {admins.length > 1 ? (
+                        {/* Status Akun Utama / Tombol Hapus / Label Akun Anda */}
+                        {isTargetDev ? (
+                          <span
+                            className="text-[11px] font-semibold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200 select-none inline-flex items-center gap-1"
+                            title="Akun Developer utama sistem (tidak dapat dihapus atau dinonaktifkan)"
+                          >
+                            <Shield className="w-3 h-3 text-purple-600" />
+                            Utama
+                          </span>
+                        ) : canDelete ? (
                           <button
                             onClick={() => setDeleteConfirmTarget(adm)}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                            title={isSelf ? "Hapus akun Anda sendiri (akan otomatis keluar sistem)" : "Hapus akun pengurus ini secara permanen"}
+                            title={`Hapus akun pengurus @${adm.username} secara permanen`}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        ) : (
-                          <span className="text-[11px] text-slate-400 italic px-1" title="Minimal 1 akun pengurus harus ada di sistem">
-                            (Akun Utama)
+                        ) : isSelf ? (
+                          <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 select-none">
+                            Akun Anda
                           </span>
+                        ) : (
+                          <span className="text-xs text-slate-300 select-none px-2">-</span>
                         )}
                       </div>
                     </td>
@@ -364,7 +509,6 @@ export default function AdminAccounts() {
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: Ust. Ahmad Dahlan, M.Ag"
                   value={addForm.nama}
                   onChange={(e) => setAddForm({ ...addForm, nama: e.target.value })}
                   className="w-full px-3.5 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
@@ -378,7 +522,6 @@ export default function AdminAccounts() {
                 <input
                   type="text"
                   required
-                  placeholder="ahmad_dahlan"
                   value={addForm.username}
                   onChange={(e) => setAddForm({ ...addForm, username: e.target.value })}
                   className="w-full px-3.5 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 font-mono"
@@ -396,7 +539,6 @@ export default function AdminAccounts() {
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
-                    placeholder="Masukkan kata sandi pengurus (min. 6 karakter)"
                     value={addForm.password}
                     onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
                     className="w-full pl-3.5 pr-10 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
@@ -420,7 +562,6 @@ export default function AdminAccounts() {
                 </label>
                 <input
                   type="email"
-                  placeholder="ahmad@siap-pengajian.org"
                   value={addForm.email}
                   onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
                   className="w-full px-3.5 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
@@ -458,8 +599,16 @@ export default function AdminAccounts() {
                   <KeyRound className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">Ubah Akun & Kata Sandi</h3>
-                  <p className="text-xs text-slate-500">Akun: @{editForm.username}</p>
+                  <h3 className="font-bold text-slate-900 text-base">
+                    {currentUser && editForm.id === currentUser.id
+                      ? 'Ubah Profil & Kata Sandi Akun Anda'
+                      : `Ubah Akun & Reset Sandi (@${editForm.username})`}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {currentUser && editForm.id === currentUser.id
+                      ? 'Perbarui nama lengkap atau ganti kata sandi login Anda'
+                      : `Kelola akun pengurus @${editForm.username}`}
+                  </p>
                 </div>
               </div>
               <button onClick={() => setEditModalOpen(false)} className="text-slate-400 hover:text-slate-600">
@@ -507,7 +656,6 @@ export default function AdminAccounts() {
                 <div className="relative">
                   <input
                     type={showEditPassword ? 'text' : 'password'}
-                    placeholder="Kosongkan jika tidak ingin mengubah kata sandi"
                     value={editForm.newPassword}
                     onChange={(e) => setEditForm({ ...editForm, newPassword: e.target.value })}
                     className="w-full pl-3.5 pr-10 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
@@ -556,14 +704,9 @@ export default function AdminAccounts() {
 
             <div>
               <h3 className="font-bold text-slate-900 text-base">Hapus Akun Pengurus?</h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Apakah Anda yakin ingin menghapus akun <strong>{deleteConfirmTarget.nama}</strong> (@{deleteConfirmTarget.username})? Tindakan ini permanen.
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Apakah Anda yakin ingin menghapus akun pengurus <strong>{deleteConfirmTarget.nama}</strong> (@{deleteConfirmTarget.username})? Tindakan ini bersifat permanen.
               </p>
-              {currentUser && deleteConfirmTarget.id === currentUser.id && (
-                <div className="mt-2.5 p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-800 text-[11px] text-left">
-                  ⚠️ <strong>Perhatian:</strong> Ini adalah akun yang sedang Anda gunakan saat ini. Jika Anda menghapus akun ini, Anda akan otomatis keluar (logout) dan harus masuk kembali menggunakan akun pengurus lain.
-                </div>
-              )}
             </div>
 
             <div className="flex items-center justify-center gap-3 pt-2">

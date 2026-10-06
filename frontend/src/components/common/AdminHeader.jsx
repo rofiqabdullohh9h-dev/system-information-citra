@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, ExternalLink, Calendar, RotateCcw, AlertTriangle, X, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Menu, ExternalLink, RotateCcw, AlertTriangle, X, Calendar, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../../store/store';
 
 export default function AdminHeader({ currentSection, setMobileOpen, onQuickAction }) {
@@ -7,8 +7,6 @@ export default function AdminHeader({ currentSection, setMobileOpen, onQuickActi
   const setPortalMode = useAppStore((state) => state.setPortalMode);
   const resetDatabase = useAppStore((state) => state.resetDatabase);
   const isResetting = useAppStore((state) => state.isResetting);
-  const fetchData = useAppStore((state) => state.fetchData);
-  const isLoading = useAppStore((state) => state.isLoading);
 
   const [showModal, setShowModal] = useState(false);
   const [feedback, setFeedback] = useState(null);
@@ -30,7 +28,7 @@ export default function AdminHeader({ currentSection, setMobileOpen, onQuickActi
   const handleConfirmReset = async () => {
     const res = await resetDatabase();
     setShowModal(false);
-    setFeedback(res.message || 'Data uji coba berhasil dibersihkan.');
+    setFeedback(res.message || 'Data berhasil dibersihkan.');
     setTimeout(() => setFeedback(null), 4000);
   };
 
@@ -38,22 +36,26 @@ export default function AdminHeader({ currentSection, setMobileOpen, onQuickActi
     <>
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 py-3.5 flex items-center justify-between">
         {/* Left: Mobile Toggle & Title */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={() => setMobileOpen(true)}
-            className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 lg:hidden"
+            className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 lg:hidden shrink-0"
             aria-label="Buka menu"
           >
             <Menu className="w-5 h-5" />
           </button>
 
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-slate-900">
+              <h1 className="text-sm sm:text-lg font-bold text-slate-900 truncate">
                 {getSectionTitle(currentSection)}
               </h1>
-              <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-brand-700 border border-emerald-200">
-                Pengurus
+              <span className={`hidden sm:inline-block px-2 py-0.5 rounded text-[11px] font-semibold border shrink-0 ${
+                currentUser?.role === 'Developer' || currentUser?.username?.toLowerCase() === 'rofiq'
+                  ? 'bg-purple-50 text-purple-700 border-purple-200'
+                  : 'bg-emerald-50 text-brand-700 border-emerald-200'
+              }`}>
+                {currentUser?.role === 'Developer' || currentUser?.username?.toLowerCase() === 'rofiq' ? 'Developer' : 'Pengurus'}
               </span>
             </div>
             <p className="text-xs text-slate-500 hidden sm:block">
@@ -63,23 +65,12 @@ export default function AdminHeader({ currentSection, setMobileOpen, onQuickActi
         </div>
 
         {/* Right: Quick actions & Reset button */}
-        <div className="flex items-center gap-2.5">
-          {/* Tombol Sinkron / Refresh Real-time */}
-          <button
-            onClick={() => fetchData({ manual: true })}
-            disabled={isLoading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-all shadow-xs disabled:opacity-50"
-            title="Muat ulang & sinkronisasi data terbaru dari database Supabase"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 text-brand-700 ${isLoading ? 'animate-spin' : ''}`} />
-            <span className="hidden md:inline">Sinkron Data</span>
-          </button>
-
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           {/* Tombol Reset Data Uji Coba */}
           <button
             onClick={() => setShowModal(true)}
             disabled={isResetting}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-xl transition-all shadow-xs disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-xl transition-all shadow-xs disabled:opacity-50"
             title="Bersihkan data jadwal, absensi, dan jamaah untuk pengujian ulang"
           >
             <RotateCcw className={`w-3.5 h-3.5 text-amber-600 ${isResetting ? 'animate-spin' : ''}`} />
@@ -89,21 +80,22 @@ export default function AdminHeader({ currentSection, setMobileOpen, onQuickActi
 
           <button
             onClick={() => setPortalMode('public')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors border border-slate-200"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors border border-slate-200"
             title="Pratinjau tampilan publik jamaah"
           >
             <ExternalLink className="w-3.5 h-3.5 text-brand-600" />
-            <span className="hidden sm:inline">Portal Publik</span>
+            <span>Portal Publik</span>
           </button>
 
           {/* Quick action button based on context */}
           {currentSection !== 'events' && (
             <button
               onClick={() => onQuickAction && onQuickAction('add-event')}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-brand-700 hover:bg-brand-800 rounded-xl shadow-xs transition-colors shadow-brand-700/20"
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 text-xs font-bold text-white bg-brand-700 hover:bg-brand-800 rounded-xl shadow-xs transition-colors shadow-brand-700/20"
             >
               <Calendar className="w-3.5 h-3.5 text-emerald-300" />
-              <span className="hidden xs:inline">+ Tambah Event</span>
+              <span className="hidden sm:inline">+ Tambah Event</span>
+              <span className="sm:hidden">+ Event</span>
             </button>
           )}
         </div>

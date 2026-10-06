@@ -1,5 +1,5 @@
 // API Service client for connecting frontend to backend
-export const API_BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000/api' : '/api');
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const getHeaders = (isFormData = false) => {
   const token = localStorage.getItem('siap_token');
@@ -34,12 +34,6 @@ export const api = {
     return safeJson(res);
   },
 
-  async getMe() {
-    const res = await fetch(`${API_BASE_URL}/auth/me`, {
-      headers: getHeaders(),
-    });
-    return safeJson(res);
-  },
 
   // Public Endpoints
   async getPublicEvents() {
@@ -52,10 +46,6 @@ export const api = {
     return safeJson(res);
   },
 
-  async getPublicStatistics() {
-    const res = await fetch(`${API_BASE_URL}/public/statistics`);
-    return safeJson(res);
-  },
 
   // Admin Events
   async getEvents() {
@@ -99,13 +89,6 @@ export const api = {
     return safeJson(res);
   },
 
-  async getEventAttendance(eventId) {
-
-    const res = await fetch(`${API_BASE_URL}/attendance/event/${eventId}`, {
-      headers: getHeaders(),
-    });
-    return safeJson(res);
-  },
 
   async recordBulkAttendance(eventId, records, autoAlpa = true) {
     const res = await fetch(`${API_BASE_URL}/attendance/bulk`, {
@@ -245,13 +228,6 @@ export const api = {
     return safeJson(res);
   },
 
-  // Analytics & Audit
-  async getAnalyticsOverview() {
-    const res = await fetch(`${API_BASE_URL}/analytics/overview`, {
-      headers: getHeaders(),
-    });
-    return safeJson(res);
-  },
 
   async getAuditLogs(params = {}) {
     const query = new URLSearchParams(params).toString();
@@ -261,10 +237,6 @@ export const api = {
     return safeJson(res);
   },
 
-  // Excel Export download url
-  getExcelExportUrl(eventId) {
-    return `${API_BASE_URL}/export/excel/${eventId}`;
-  },
 
   // Bulletins (Pengumuman & Warta Berita/Dokumentasi)
   async getBulletins(params = {}) {

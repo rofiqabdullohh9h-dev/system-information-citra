@@ -180,6 +180,10 @@ CREATE INDEX IF NOT EXISTS "AuditLog_adminId_idx" ON "AuditLog"("adminId");
 CREATE INDEX IF NOT EXISTS "AuditLog_action_idx" ON "AuditLog"("action");
 CREATE INDEX IF NOT EXISTS "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
 
+CREATE INDEX IF NOT EXISTS "Bulletin_tipe_idx" ON "Bulletin"("tipe");
+CREATE INDEX IF NOT EXISTS "Bulletin_is_pinned_idx" ON "Bulletin"("is_pinned");
+CREATE INDEX IF NOT EXISTS "Bulletin_tanggal_publikasi_idx" ON "Bulletin"("tanggal_publikasi");
+
 -- ==============================================================================
 -- FOREIGN KEYS
 -- ==============================================================================
@@ -216,12 +220,11 @@ END $$;
 -- (TIDAK ADA DATA DUMMY JAMAAH, TIDAK ADA DUMMY EVENT, TIDAK ADA DUMMY ABSENSI)
 -- ==============================================================================
 
--- 1. Akun Pengurus Awal (Password default: admin123)
+-- 1. Akun Developer Utama (Password default: admin123)
 -- Hash: $2b$10$zDFH1zMJBvVcly.ECJYLL.G4E08CMc66HlFx7qzIoJ5AihwsV.g8e
 INSERT INTO "Admin" ("id", "nama", "username", "passwordHash", "email", "role", "isActive")
 VALUES 
-    ('admin-001', 'Ust. Dr. Budi Raharjo', 'budi_ketua', '$2b$10$zDFH1zMJBvVcly.ECJYLL.G4E08CMc66HlFx7qzIoJ5AihwsV.g8e', 'budi.raharjo@siap-pengajian.org', 'Pengurus', true),
-    ('admin-002', 'Ustadzah Ani Maryam', 'ani_sekretaris', '$2b$10$zDFH1zMJBvVcly.ECJYLL.G4E08CMc66HlFx7qzIoJ5AihwsV.g8e', 'ani.maryam@siap-pengajian.org', 'Pengurus', true)
+    ('admin-001', 'ROFIQ ABDULLOH', 'rofiq', '$2b$10$zDFH1zMJBvVcly.ECJYLL.G4E08CMc66HlFx7qzIoJ5AihwsV.g8e', 'rofiq@citra.org', 'Developer', true)
 ON CONFLICT ("username") DO NOTHING;
 
 -- 2. Kategori Master Pengajian Dasar (Jenjang Kelompok Usia/Generasi)

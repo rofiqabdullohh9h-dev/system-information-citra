@@ -10,7 +10,6 @@ import {
   History,
   LogOut,
   ExternalLink,
-  ChevronRight,
   Megaphone,
   X
 } from 'lucide-react';
@@ -124,15 +123,23 @@ export default function AdminSidebar({ currentSection, setCurrentSection, mobile
         <div className="p-4 border-t border-slate-800 bg-slate-950/40">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-emerald-700/40 text-emerald-300 border border-emerald-600/40 flex items-center justify-center font-bold text-xs uppercase">
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs uppercase ${
+                currentUser?.role === 'Developer' || currentUser?.username?.toLowerCase() === 'rofiq'
+                  ? 'bg-purple-900/60 text-purple-300 border border-purple-500/50'
+                  : 'bg-emerald-700/40 text-emerald-300 border border-emerald-600/40'
+              }`}>
                 {currentUser?.nama?.charAt(0) || 'A'}
               </div>
               <div className="overflow-hidden">
                 <span className="text-xs font-semibold text-white block truncate max-w-[120px]">
                   {currentUser?.nama || 'Admin Pengurus'}
                 </span>
-                <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
-                  Pengurus
+                <span className={`text-[10px] flex items-center gap-1 font-mono ${
+                  currentUser?.role === 'Developer' || currentUser?.username?.toLowerCase() === 'rofiq'
+                    ? 'text-purple-400 font-semibold'
+                    : 'text-emerald-400'
+                }`}>
+                  {currentUser?.role === 'Developer' || currentUser?.username?.toLowerCase() === 'rofiq' ? 'Developer' : 'Pengurus'}
                 </span>
               </div>
             </div>

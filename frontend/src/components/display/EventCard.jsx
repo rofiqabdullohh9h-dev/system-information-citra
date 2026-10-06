@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Calendar, Clock, MapPin, User, Users, Share2, Eye, Shield, CheckCircle2 } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, Users, Share2, Eye, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../../store/store';
 
 function EventCard({ event, onOpenDetail }) {

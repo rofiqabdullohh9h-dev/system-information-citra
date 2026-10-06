@@ -1,14 +1,11 @@
 import React, { useState } from 'react';
-import { Calendar, Users, BarChart3, LogIn, Menu, X, ShieldCheck, ChevronRight, RefreshCw, Megaphone } from 'lucide-react';
+import { Calendar, BarChart3, LogIn, Menu, X, Megaphone, ShieldCheck } from 'lucide-react';
 import { useAppStore } from '../../store/store';
 
 export default function PublicHeader({ activeTab, setActiveTab }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const currentUser = useAppStore((state) => state.currentUser);
   const setPortalMode = useAppStore((state) => state.setPortalMode);
-  const fetchData = useAppStore((state) => state.fetchData);
-  const isLoading = useAppStore((state) => state.isLoading);
-
 
   const navItems = [
     { id: 'jadwal', label: 'Jadwal Pengajian', icon: Calendar },
@@ -59,17 +56,7 @@ export default function PublicHeader({ activeTab, setActiveTab }) {
 
           {/* Right Action: Admin Login or Dashboard Switcher */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={() => fetchData({ manual: true })}
-              disabled={isLoading}
-              className="p-2 rounded-xl text-slate-500 hover:text-brand-700 hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200"
-              title="Segarkan data pengajian"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-brand-600' : ''}`} />
-            </button>
-
             {currentUser ? (
-
               <button
                 onClick={() => setPortalMode('admin')}
                 className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs sm:text-sm font-medium shadow-sm transition-all shadow-brand-700/20 hover:shadow-brand-700/30"
@@ -77,15 +64,15 @@ export default function PublicHeader({ activeTab, setActiveTab }) {
                 <ShieldCheck className="w-4 h-4 text-emerald-300" />
                 <span className="hidden sm:inline">Panel Pengurus</span>
                 <span className="sm:hidden">Admin</span>
-                <ChevronRight className="w-3.5 h-3.5 opacity-70" />
               </button>
             ) : (
               <button
                 onClick={() => setPortalMode('login')}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-slate-300 hover:border-brand-600 bg-white hover:bg-emerald-50/50 text-slate-700 hover:text-brand-700 text-xs sm:text-sm font-medium transition-all shadow-xs"
+                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 rounded-xl border border-slate-300 hover:border-brand-600 bg-white hover:bg-emerald-50/50 text-slate-700 hover:text-brand-700 text-xs sm:text-sm font-medium transition-all shadow-xs"
               >
-                <LogIn className="w-4 h-4 text-slate-400 group-hover:text-brand-600" />
-                <span>Login Pengurus</span>
+                <LogIn className="w-4 h-4 text-slate-400 group-hover:text-brand-600 shrink-0" />
+                <span className="hidden sm:inline">Login Pengurus</span>
+                <span className="sm:hidden font-semibold">Login</span>
               </button>
             )}
 

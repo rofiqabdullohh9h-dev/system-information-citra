@@ -49,7 +49,7 @@ export const login = async (req, res, next) => {
       id: admin.id,
       username: admin.username,
       nama: admin.nama,
-      role: 'Pengurus',
+      role: admin.role || 'Pengurus',
     });
 
     // Record Audit Log
@@ -70,7 +70,7 @@ export const login = async (req, res, next) => {
         nama: admin.nama,
         username: admin.username,
         email: admin.email,
-        role: 'Pengurus',
+        role: admin.role || 'Pengurus',
       },
     });
   } catch (error) {

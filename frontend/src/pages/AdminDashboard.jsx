@@ -1,17 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import { useAppStore } from '../store/store';
 import AdminSidebar from '../components/common/AdminSidebar';
 import AdminHeader from '../components/common/AdminHeader';
-import AdminOverview from './AdminOverview';
-import EventManagement from './EventManagement';
-import AttendanceForm from './AttendanceForm';
-import JamaahManagement from './JamaahManagement';
-import CategoryManagement from './CategoryManagement';
-import Analytics from './Analytics';
-import AdminAccounts from './AdminAccounts';
-import AuditLogs from './AuditLogs';
-import BulletinManager from './BulletinManager';
-import LoginPage from './LoginPage';
+
+const AdminOverview = lazy(() => import('./AdminOverview'));
+const EventManagement = lazy(() => import('./EventManagement'));
+const AttendanceForm = lazy(() => import('./AttendanceForm'));
+const JamaahManagement = lazy(() => import('./JamaahManagement'));
+const CategoryManagement = lazy(() => import('./CategoryManagement'));
+const Analytics = lazy(() => import('./Analytics'));
+const AdminAccounts = lazy(() => import('./AdminAccounts'));
+const AuditLogs = lazy(() => import('./AuditLogs'));
+const BulletinManager = lazy(() => import('./BulletinManager'));
+const LoginPage = lazy(() => import('./LoginPage'));
 
 export default function AdminDashboard() {
   const [currentSection, setCurrentSection] = useState('overview');
@@ -22,7 +23,15 @@ export default function AdminDashboard() {
 
   // If not logged in, show LoginPage
   if (!currentUser) {
-    return <LoginPage />;
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      }>
+        <LoginPage />
+      </Suspense>
+    );
   }
 
   const handleQuickAction = (action) => {
@@ -59,21 +68,28 @@ export default function AdminDashboard() {
           onQuickAction={handleQuickAction}
         />
 
-        {/* Content Body */}
+        {/* Content Body with On-Demand Lazy Loaded Tabs */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto animate-fade-in">
-          {currentSection === 'overview' && (
-            <AdminOverview onNavigate={handleNavigate} />
-          )}
-          {currentSection === 'events' && <EventManagement />}
-          {currentSection === 'attendance' && (
-            <AttendanceForm initialEventId={attendanceEventId} />
-          )}
-          {currentSection === 'bulletins' && <BulletinManager />}
-          {currentSection === 'jamaah' && <JamaahManagement />}
-          {currentSection === 'categories' && <CategoryManagement />}
-          {currentSection === 'analytics' && <Analytics />}
-          {currentSection === 'admin-manage' && <AdminAccounts />}
-          {currentSection === 'audit' && <AuditLogs />}
+          <Suspense fallback={
+            <div className="py-24 flex flex-col items-center justify-center text-slate-400 gap-2.5">
+              <div className="w-8 h-8 border-3 border-brand-700 border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-xs font-medium">Memuat modul pengurus...</span>
+            </div>
+          }>
+            {currentSection === 'overview' && (
+              <AdminOverview onNavigate={handleNavigate} />
+            )}
+            {currentSection === 'events' && <EventManagement />}
+            {currentSection === 'attendance' && (
+              <AttendanceForm initialEventId={attendanceEventId} />
+            )}
+            {currentSection === 'bulletins' && <BulletinManager />}
+            {currentSection === 'jamaah' && <JamaahManagement />}
+            {currentSection === 'categories' && <CategoryManagement />}
+            {currentSection === 'analytics' && <Analytics />}
+            {currentSection === 'admin-manage' && <AdminAccounts />}
+            {currentSection === 'audit' && <AuditLogs />}
+          </Suspense>
         </main>
       </div>
     </div>

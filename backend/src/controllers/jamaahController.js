@@ -238,10 +238,14 @@ export const deleteJamaah = async (req, res, next) => {
       });
     }
 
-    // Soft delete
+    // 1. Hapus relasi kehadiran dan kelompok kategori jamaah
+    await supabase.from('Attendance').delete().eq('jamaahId', jamaahId);
+    await supabase.from('JamaahCategory').delete().eq('jamaahId', jamaahId);
+
+    // 2. Hapus permanen dari tabel Jamaah di Supabase
     const { error: deleteError } = await supabase
       .from('Jamaah')
-      .update({ deletedAt: new Date().toISOString() })
+      .delete()
       .eq('id', jamaahId);
 
     if (deleteError) throw deleteError;
@@ -251,12 +255,12 @@ export const deleteJamaah = async (req, res, next) => {
       adminNama: req.user.nama,
       action: 'DELETE_JAMAAH',
       target: jamaah.nama,
-      details: `Pengurus ${req.user.nama} menghapus data jamaah`,
+      details: `Pengurus ${req.user.nama} menghapus data jamaah: "${jamaah.nama}"`,
     });
 
     res.status(200).json({
       success: true,
-      message: 'Data jamaah berhasil dihapus.',
+      message: 'Data jamaah berhasil dihapus permanen dari database.',
     });
   } catch (error) {
     next(error);

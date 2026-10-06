@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { History, Search, ShieldCheck, Filter, Clock, User } from 'lucide-react';
+import { History, Search } from 'lucide-react';
 import { useAppStore } from '../store/store';
 
 export default function AuditLogs() {
@@ -78,40 +78,64 @@ export default function AuditLogs() {
       {/* Logs Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-subtle overflow-hidden">
         {filteredLogs.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm">
-              <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                <tr>
-                  <th className="px-5 py-3.5">Waktu</th>
-                  <th className="px-5 py-3.5">Nama Pengurus</th>
-                  <th className="px-5 py-3.5">Tipe Aksi</th>
-                  <th className="px-5 py-3.5">Objek Sasaran</th>
-                  <th className="px-5 py-3.5">Rincian Perubahan</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="px-5 py-3.5 whitespace-nowrap text-slate-500 font-mono text-xs">
-                      {log.timestamp}
-                    </td>
-                    <td className="px-5 py-3.5 font-bold text-slate-900 whitespace-nowrap">
-                      {log.adminNama}
-                    </td>
-                    <td className="px-5 py-3.5 whitespace-nowrap">
-                      {getActionBadge(log.action)}
-                    </td>
-                    <td className="px-5 py-3.5 font-medium text-slate-800 line-clamp-1 max-w-xs">
-                      {log.target}
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-600 text-xs">
+          <>
+            {/* Mobile Cards View */}
+            <div className="sm:hidden divide-y divide-slate-100">
+              {filteredLogs.map((log) => (
+                <div key={log.id} className="p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-slate-900 text-sm">{log.adminNama}</span>
+                    <span className="text-[11px] text-slate-400 font-mono">{log.timestamp}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {getActionBadge(log.action)}
+                    <span className="text-xs font-semibold text-slate-800 line-clamp-1">{log.target}</span>
+                  </div>
+                  {log.details && (
+                    <p className="text-xs text-slate-600 bg-slate-50/80 p-2.5 rounded-xl border border-slate-100 mt-1">
                       {log.details}
-                    </td>
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-left text-xs sm:text-sm">
+                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="px-5 py-3.5">Waktu</th>
+                    <th className="px-5 py-3.5">Nama Pengurus</th>
+                    <th className="px-5 py-3.5">Tipe Aksi</th>
+                    <th className="px-5 py-3.5">Objek Sasaran</th>
+                    <th className="px-5 py-3.5">Rincian Perubahan</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="px-5 py-3.5 whitespace-nowrap text-slate-500 font-mono text-xs">
+                        {log.timestamp}
+                      </td>
+                      <td className="px-5 py-3.5 font-bold text-slate-900 whitespace-nowrap">
+                        {log.adminNama}
+                      </td>
+                      <td className="px-5 py-3.5 whitespace-nowrap">
+                        {getActionBadge(log.action)}
+                      </td>
+                      <td className="px-5 py-3.5 font-medium text-slate-800 line-clamp-1 max-w-xs">
+                        {log.target}
+                      </td>
+                      <td className="px-5 py-3.5 text-slate-600 text-xs">
+                        {log.details}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : (
           <div className="text-center py-12 p-6 text-slate-500 space-y-2">
             <History className="w-8 h-8 text-slate-300 mx-auto" />

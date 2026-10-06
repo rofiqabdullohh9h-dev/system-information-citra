@@ -4,11 +4,6 @@ import {
   Calendar,
   CheckCircle,
   TrendingUp,
-  Clock,
-  ArrowRight,
-  Shield,
-  Eye,
-  AlertCircle,
   ChevronRight,
   BarChart3
 } from 'lucide-react';
@@ -21,7 +16,6 @@ export default function AdminOverview({ onNavigate }) {
   const categories = useAppStore((state) => state.categories);
   const attendance = useAppStore((state) => state.attendance);
   const auditLogs = useAppStore((state) => state.auditLogs);
-  const currentUser = useAppStore((state) => state.currentUser);
 
   const [selectedEventForModal, setSelectedEventForModal] = useState(null);
 
@@ -268,7 +262,61 @@ export default function AdminOverview({ onNavigate }) {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Mobile Card List */}
+          <div className="sm:hidden divide-y divide-slate-100">
+            {events.length > 0 ? (
+              events.map(event => {
+                const att = Object.values(attendance[event.id] || {});
+                const hadir = att.filter(s => s === 'HADIR').length;
+                const daring = att.filter(s => s === 'DARING').length;
+                const izin = att.filter(s => s === 'IZIN' || s === 'SAKIT').length;
+
+                return (
+                  <div key={event.id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <span className="font-semibold text-slate-800 text-sm block line-clamp-2">{event.tema}</span>
+                        {event.pembicara && event.pembicara.trim() && (
+                          <span className="text-xs text-slate-400 block mt-0.5">{event.pembicara}</span>
+                        )}
+                        <span className="text-xs text-slate-500 block mt-1">
+                          {new Date(event.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => setSelectedEventForModal(event)}
+                        className="shrink-0 text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 active:bg-brand-200 px-3 py-1.5 rounded-lg border border-brand-200/60 transition-colors"
+                      >
+                        Detail
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+                      <div className="bg-emerald-50 border border-emerald-100/80 rounded-xl p-2">
+                        <span className="block text-[11px] text-emerald-700 font-medium">Hadir</span>
+                        <span className="text-sm font-bold text-emerald-800">{hadir}</span>
+                      </div>
+                      <div className="bg-sky-50 border border-sky-100/80 rounded-xl p-2">
+                        <span className="block text-[11px] text-sky-700 font-medium">Daring</span>
+                        <span className="text-sm font-bold text-sky-800">{daring}</span>
+                      </div>
+                      <div className="bg-amber-50 border border-amber-100/80 rounded-xl p-2">
+                        <span className="block text-[11px] text-amber-700 font-medium">Izin/Sakit</span>
+                        <span className="text-sm font-bold text-amber-800">{izin}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="text-center py-8 text-slate-400 text-xs">
+                Belum ada jadwal kegiatan di database.
+              </div>
+            )}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-left text-xs sm:text-sm">
               <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
                 <tr>

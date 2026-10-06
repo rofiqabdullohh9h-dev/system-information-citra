@@ -5,10 +5,12 @@
   "type": "module",
   "description": "Sistem Informasi & Absensi Pengajian (SIAP)",
   "scripts": {
-    "dev": "npm run dev --prefix frontend",
+    "dev": "node scripts/dev.js",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "node backend/src/server.js",
     "build": "npm install --include=dev && npm --prefix frontend install --include=dev && npm --prefix frontend run build",
     "start": "node backend/src/server.js",
-    "backend": "npm start --prefix backend",
+    "backend": "node backend/src/server.js",
     "frontend": "npm run dev --prefix frontend"
   },
   "dependencies": {

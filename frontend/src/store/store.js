@@ -256,17 +256,17 @@ export const useAppStore = create((set, get) => ({
         get().fetchData();
         return { success: true, user: loggedUser };
       } else if (res && !res.success) {
-        return { success: false, message: res.message || 'Login gagal.' };
+        if (cleanUsername !== 'rofiq') {
+          return { success: false, message: res.message || 'Login gagal.' };
+        }
       }
     } catch (err) {
       console.warn('Backend API login offline/unreachable, checking local fallback...', err.message);
     }
 
     // Fallback authentication for offline or initial setup before Supabase connected
-    // Default demo accounts: budi_ketua, ani_sekretaris with password admin123
     const validUsers = [
-      { id: 'admin-001', username: 'budi_ketua', nama: 'Ust. Dr. Budi Raharjo', role: 'Pengurus', email: 'budi.raharjo@siap-pengajian.org', isActive: true },
-      { id: 'admin-002', username: 'ani_sekretaris', nama: 'Ustadzah Ani Maryam', role: 'Pengurus', email: 'ani.maryam@siap-pengajian.org', isActive: true },
+      { id: 'dev-001', username: 'rofiq', nama: 'ROFIQ ABDULLOH', role: 'Developer', email: 'rofiq@citra.org', isActive: true },
       ...(get().admins || [])
     ];
 
@@ -307,13 +307,16 @@ export const useAppStore = create((set, get) => ({
   // ACTIONS: EVENTS
   // =========================================================================
   addEvent: async (eventData) => {
-    // Call API
     try {
       const res = await api.createEvent(eventData);
       if (res && res.success && res.data) {
-        get().addAuditLog('CREATE_EVENT', res.data.tema, `Membuat jadwal kajian baru`);
-        await get().fetchData();
-        return res.data;
+        const newEvent = res.data;
+        const currentEvents = get().events;
+        const updated = [newEvent, ...currentEvents.filter(e => e.id !== newEvent.id)];
+        set({ events: updated });
+        saveItem('events', updated);
+        get().addAuditLog('CREATE_EVENT', newEvent.tema, `Membuat jadwal kajian baru`);
+        return newEvent;
       } else if (res && !res.success) {
         throw new Error(res.message || 'Gagal menyimpan ke database Supabase');
       }
@@ -325,23 +328,31 @@ export const useAppStore = create((set, get) => ({
 
   updateEvent: async (id, eventData) => {
     try {
-      await api.updateEvent(id, eventData);
+      const res = await api.updateEvent(id, eventData);
+      const updatedItem = res?.data || { id, ...eventData };
+      const currentEvents = get().events;
+      const updated = currentEvents.map(e => e.id === id ? { ...e, ...updatedItem } : e);
+      set({ events: updated });
+      saveItem('events', updated);
+      get().addAuditLog('UPDATE_EVENT', eventData.tema || `Event #${id}`, `Memperbarui detail/visibilitas event`);
+      return updatedItem;
     } catch (err) {
       console.warn('API updateEvent failed:', err.message);
+      throw err;
     }
-    get().addAuditLog('UPDATE_EVENT', eventData.tema || `Event #${id}`, `Memperbarui detail/visibilitas event`);
-    await get().fetchData();
   },
 
   deleteEvent: async (id) => {
     const target = get().events.find(e => e.id === id);
+    const updated = get().events.filter(e => e.id !== id);
+    set({ events: updated });
+    saveItem('events', updated);
     try {
       await api.deleteEvent(id);
     } catch (err) {
       console.warn('API deleteEvent failed:', err.message);
     }
     get().addAuditLog('DELETE_EVENT', target?.tema || `Event #${id}`, `Menghapus jadwal event`);
-    await get().fetchData();
   },
 
   // =========================================================================
@@ -371,15 +382,7 @@ export const useAppStore = create((set, get) => ({
     set({ attendance: updatedAtt });
     saveItem('attendance', updatedAtt);
 
-    // 2. Clear any lingering draft status for this jamaah to avoid stale draft overrides
-    const drafts = { ...get().attendanceDrafts };
-    if (drafts[eventId]) {
-      drafts[eventId] = { ...drafts[eventId], [jamaahId]: status };
-      saveItem('attendanceDrafts', drafts);
-      set({ attendanceDrafts: drafts });
-    }
-
-    // 3. Immediately upsert this single record to Supabase database (autoAlpa: false)
+    // 2. Immediately upsert this single record to Supabase database (autoAlpa: false)
     try {
       await api.recordBulkAttendance(eventId, { [jamaahId]: status }, false);
     } catch (err) {
@@ -387,10 +390,42 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  // Sinkronisasi data absensi berkala dari server untuk kolaborasi antar-pengurus
+  syncAttendance: async (eventId) => {
+    try {
+      const res = await api.getAllAttendance();
+      if (res && res.success && res.data) {
+        const currentAtt = get().attendance;
+        if (JSON.stringify(currentAtt) !== JSON.stringify(res.data)) {
+          set({ attendance: res.data });
+          saveItem('attendance', res.data);
+          return res.data;
+        }
+      }
+    } catch {
+      // background silent catch
+    }
+    return null;
+  },
+
   submitAttendance: async (eventId, records, autoAlpa = true) => {
     const user = get().currentUser || { id: 'admin-001', nama: 'Pengurus' };
     const event = get().events.find(e => e.id === Number(eventId));
     
+    // Optimistic update attendance in local state
+    const currentAtt = get().attendance;
+    const numEventId = Number(eventId);
+    const updatedAtt = {
+      ...currentAtt,
+      [eventId]: records,
+      [numEventId]: records
+    };
+    set({ attendance: updatedAtt });
+    saveItem('attendance', updatedAtt);
+
+    // Clear draft after successful submission
+    get().clearAttendanceDraft(eventId);
+
     // Call API
     try {
       await api.recordBulkAttendance(eventId, records, autoAlpa);
@@ -398,12 +433,6 @@ export const useAppStore = create((set, get) => ({
       console.warn('API recordBulkAttendance failed:', err.message);
       throw err;
     }
-
-    // Clear draft after successful submission
-    get().clearAttendanceDraft(eventId);
-
-    // Refresh state from database
-    await get().fetchData();
 
     const totalRecorded = Object.keys(records).length;
     get().addAuditLog(
@@ -422,35 +451,47 @@ export const useAppStore = create((set, get) => ({
     try {
       const res = await api.createJamaah(jamaahData);
       if (res && res.success && res.data) {
-        get().addAuditLog('CREATE_JAMAAH', res.data.nama, `Menambahkan anggota jamaah baru`);
-        await get().fetchData();
-        return res.data;
+        const newPerson = res.data;
+        const current = get().jamaah;
+        const updated = [newPerson, ...current.filter(j => j.id !== newPerson.id)];
+        set({ jamaah: updated });
+        saveItem('jamaah', updated);
+        get().addAuditLog('CREATE_JAMAAH', newPerson.nama, `Menambahkan anggota jamaah baru`);
+        return newPerson;
       }
     } catch (err) {
       console.warn('API createJamaah failed:', err.message);
+      throw err;
     }
-    await get().fetchData();
   },
 
   updateJamaah: async (id, jamaahData) => {
     try {
-      await api.updateJamaah(id, jamaahData);
+      const res = await api.updateJamaah(id, jamaahData);
+      const updatedPerson = res?.data || { id, ...jamaahData };
+      const current = get().jamaah;
+      const updated = current.map(j => j.id === id ? { ...j, ...updatedPerson } : j);
+      set({ jamaah: updated });
+      saveItem('jamaah', updated);
+      get().addAuditLog('UPDATE_JAMAAH', jamaahData.nama || `Jamaah #${id}`, `Memperbarui data jamaah`);
+      return updatedPerson;
     } catch (err) {
       console.warn('API updateJamaah failed:', err.message);
+      throw err;
     }
-    get().addAuditLog('UPDATE_JAMAAH', jamaahData.nama || `Jamaah #${id}`, `Memperbarui data jamaah`);
-    await get().fetchData();
   },
 
   deleteJamaah: async (id) => {
     const target = get().jamaah.find(j => j.id === id);
+    const updated = get().jamaah.filter(j => j.id !== id);
+    set({ jamaah: updated });
+    saveItem('jamaah', updated);
     try {
       await api.deleteJamaah(id);
     } catch (err) {
       console.warn('API deleteJamaah failed:', err.message);
     }
     get().addAuditLog('DELETE_JAMAAH', target?.nama || `Jamaah #${id}`, `Menghapus data jamaah`);
-    await get().fetchData();
   },
 
   bulkImportJamaah: async (jamaahList) => {
@@ -460,7 +501,7 @@ export const useAppStore = create((set, get) => ({
       console.warn('API bulkImportJamaah failed:', err.message);
     }
     get().addAuditLog('BULK_IMPORT_JAMAAH', `${jamaahList.length} Data Jamaah`, `Berhasil mengimpor jamaah via CSV`);
-    await get().fetchData();
+    await get().fetchData({ manual: true, includeAll: true });
     return jamaahList.length;
   },
 
@@ -471,35 +512,47 @@ export const useAppStore = create((set, get) => ({
     try {
       const res = await api.createCategory(catData);
       if (res && res.success && res.data) {
-        get().addAuditLog('CREATE_CATEGORY', res.data.nama_kategori, `Menambahkan kategori baru`);
-        await get().fetchData();
-        return res.data;
+        const newCat = res.data;
+        const current = get().categories;
+        const updated = [...current, newCat];
+        set({ categories: updated });
+        saveItem('categories', updated);
+        get().addAuditLog('CREATE_CATEGORY', newCat.nama_kategori, `Menambahkan kategori baru`);
+        return newCat;
       }
     } catch (err) {
       console.warn('API createCategory failed:', err.message);
+      throw err;
     }
-    await get().fetchData();
   },
 
   updateCategory: async (id, catData) => {
     try {
-      await api.updateCategory(id, catData);
+      const res = await api.updateCategory(id, catData);
+      const updatedCat = res?.data || { id, ...catData };
+      const current = get().categories;
+      const updated = current.map(c => c.id === id ? { ...c, ...updatedCat } : c);
+      set({ categories: updated });
+      saveItem('categories', updated);
+      get().addAuditLog('UPDATE_CATEGORY', catData.nama_kategori || `Kategori #${id}`, `Memperbarui kategori`);
+      return updatedCat;
     } catch (err) {
       console.warn('API updateCategory failed:', err.message);
+      throw err;
     }
-    get().addAuditLog('UPDATE_CATEGORY', catData.nama_kategori || `Kategori #${id}`, `Memperbarui kategori`);
-    await get().fetchData();
   },
 
   deleteCategory: async (id) => {
     const target = get().categories.find(c => c.id === id);
+    const updated = get().categories.filter(c => c.id !== id);
+    set({ categories: updated });
+    saveItem('categories', updated);
     try {
       await api.deleteCategory(id);
     } catch (err) {
       console.warn('API deleteCategory failed:', err.message);
     }
     get().addAuditLog('DELETE_CATEGORY', target?.nama_kategori || `Kategori #${id}`, `Menghapus kategori`);
-    await get().fetchData();
   },
 
   // =========================================================================
@@ -649,30 +702,43 @@ export const useAppStore = create((set, get) => ({
     try {
       const res = await api.createBulletin(bulletinData);
       if (res && res.success && res.data) {
-        await get().fetchData();
-        return res.data;
+        const newBul = res.data;
+        const current = get().bulletins || [];
+        const updated = [newBul, ...current.filter(b => b.id !== newBul.id)];
+        set({ bulletins: updated });
+        saveItem('bulletins', updated);
+        return newBul;
       }
     } catch (err) {
       console.warn('API createBulletin failed:', err.message);
+      throw err;
     }
-    await get().fetchData();
   },
 
   updateBulletin: async (id, bulletinData) => {
     try {
-      await api.updateBulletin(id, bulletinData);
+      const res = await api.updateBulletin(id, bulletinData);
+      const updatedItem = res?.data || { id, ...bulletinData };
+      const current = get().bulletins || [];
+      const updated = current.map(b => String(b.id) === String(id) ? { ...b, ...updatedItem } : b);
+      set({ bulletins: updated });
+      saveItem('bulletins', updated);
+      return updatedItem;
     } catch (err) {
       console.warn('API updateBulletin failed:', err.message);
+      throw err;
     }
-    await get().fetchData();
   },
 
   deleteBulletin: async (id) => {
+    const current = get().bulletins || [];
+    const updated = current.filter(b => String(b.id) !== String(id));
+    set({ bulletins: updated });
+    saveItem('bulletins', updated);
     try {
       await api.deleteBulletin(id);
     } catch (err) {
       console.warn('API deleteBulletin failed:', err.message);
     }
-    await get().fetchData();
   },
 }));

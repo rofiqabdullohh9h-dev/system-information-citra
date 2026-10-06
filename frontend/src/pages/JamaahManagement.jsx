@@ -3,16 +3,14 @@ import {
   Users,
   Plus,
   Search,
-  Upload,
-  Download,
   Edit2,
   Trash2,
   X,
   FileSpreadsheet,
   CheckCircle,
-  AlertCircle,
-  UserCheck,
-  Filter
+  Upload,
+  Download,
+  AlertCircle
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
 
@@ -34,6 +32,8 @@ export default function JamaahManagement() {
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -89,18 +89,26 @@ export default function JamaahManagement() {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (!formData.nama.trim()) return;
 
-    if (editingJamaah) {
-      updateJamaah(editingJamaah.id, formData);
-      showToast('Data jamaah berhasil diperbarui.');
-    } else {
-      addJamaah(formData);
-      showToast('Jamaah baru berhasil ditambahkan.');
+    setIsSubmitting(true);
+    try {
+      if (editingJamaah) {
+        await updateJamaah(editingJamaah.id, formData);
+        showToast('Data jamaah berhasil diperbarui.');
+      } else {
+        await addJamaah(formData);
+        showToast('Jamaah baru berhasil ditambahkan.');
+      }
+      setModalOpen(false);
+    } catch (err) {
+      showToast(err.message || 'Gagal menyimpan data jamaah.');
+    } finally {
+      setIsSubmitting(false);
     }
-    setModalOpen(false);
   };
 
   const handleDelete = (id) => {
@@ -175,13 +183,20 @@ export default function JamaahManagement() {
     }
   };
 
-  const handleCommitImport = () => {
-    if (parsedPreview.length === 0) return;
-    bulkImportJamaah(parsedPreview);
-    setImportModalOpen(false);
-    setImportText('');
-    setParsedPreview([]);
-    showToast(`Alhamdulillah! Berhasil mengimpor ${parsedPreview.length} data jamaah.`);
+  const handleCommitImport = async () => {
+    if (isImporting || parsedPreview.length === 0) return;
+    setIsImporting(true);
+    try {
+      await bulkImportJamaah(parsedPreview);
+      setImportModalOpen(false);
+      setImportText('');
+      setParsedPreview([]);
+      showToast(`Berhasil mengimpor ${parsedPreview.length} data jamaah.`);
+    } catch (err) {
+      showToast(err.message || 'Gagal mengimpor data jamaah.');
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   return (
@@ -269,76 +284,147 @@ export default function JamaahManagement() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table & Mobile Cards */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-subtle overflow-hidden">
         {filteredJamaah.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm">
-              <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                <tr>
-                  <th className="px-5 py-3 w-12">No</th>
-                  <th className="px-5 py-3">Nama Jamaah</th>
-                  <th className="px-5 py-3">No. WhatsApp</th>
-                  <th className="px-5 py-3">Jenis Kelamin</th>
-                  <th className="px-5 py-3">Kelompok / Kategori</th>
-                  <th className="px-5 py-3 text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredJamaah.map((person, idx) => {
-                  const personCats = (person.categoryIds || []).map(cid => categories.find(c => c.id === cid)?.nama_kategori).filter(Boolean);
-
-                  return (
-                    <tr key={person.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="px-5 py-3.5 text-slate-400 font-mono text-xs">{idx + 1}</td>
-                      <td className="px-5 py-3.5 font-bold text-slate-900">{person.nama}</td>
-                      <td className="px-5 py-3.5 text-slate-600 font-mono text-xs">
-                        {person.no_whatsapp ? (
-                          <a href={`https://wa.me/${person.no_whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="text-brand-700 hover:underline">
-                            {person.no_whatsapp}
-                          </a>
-                        ) : '-'}
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                          person.jenis_kelamin === 'L' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-pink-50 text-pink-700 border border-pink-200'
-                        }`}>
-                          {person.jenis_kelamin === 'L' ? 'Ikhwan (L)' : 'Akhwat (P)'}
+          <>
+            {/* Mobile Card List View (sm:hidden) */}
+            <div className="sm:hidden divide-y divide-slate-100">
+              {filteredJamaah.map((person, idx) => {
+                const personCats = (person.categoryIds || []).map(cid => categories.find(c => c.id === cid)?.nama_kategori).filter(Boolean);
+                return (
+                  <div key={person.id} className="p-4 space-y-2.5 hover:bg-slate-50/70 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="w-6 h-6 rounded-md bg-slate-100 text-slate-500 font-mono text-xs flex items-center justify-center font-bold shrink-0">
+                          {idx + 1}
                         </span>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex flex-wrap gap-1">
-                          {personCats.map((catName, cIdx) => (
-                            <span key={cIdx} className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-slate-900 text-sm leading-snug">{person.nama}</h4>
+                          {person.no_whatsapp ? (
+                            <a
+                              href={`https://wa.me/${person.no_whatsapp.replace(/\D/g, '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs font-mono text-emerald-700 hover:underline inline-flex items-center gap-1 mt-0.5"
+                            >
+                              📱 {person.no_whatsapp}
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400 font-mono">Tanpa no. WA</span>
+                          )}
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                        person.jenis_kelamin === 'L' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-pink-50 text-pink-700 border border-pink-200'
+                      }`}>
+                        {person.jenis_kelamin === 'L' ? 'Ikhwan (L)' : 'Akhwat (P)'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                      <div className="flex flex-wrap gap-1">
+                        {personCats.length > 0 ? (
+                          personCats.map((catName, cIdx) => (
+                            <span key={cIdx} className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
                               {catName}
                             </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => openEditModal(person)}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-brand-800 hover:bg-slate-100 transition-colors"
-                            title="Edit Jamaah"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirmId(person.id)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                            title="Hapus Jamaah"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                          ))
+                        ) : (
+                          <span className="text-[11px] text-slate-400 italic">Umum</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => openEditModal(person)}
+                          className="p-2 rounded-xl text-slate-600 hover:text-brand-800 hover:bg-slate-100 transition-colors"
+                          title="Edit Jamaah"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirmId(person.id)}
+                          className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          title="Hapus Jamaah"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop Table View (hidden sm:block) */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full text-left text-xs sm:text-sm">
+                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="px-5 py-3 w-12">No</th>
+                    <th className="px-5 py-3">Nama Jamaah</th>
+                    <th className="px-5 py-3">No. WhatsApp</th>
+                    <th className="px-5 py-3">Jenis Kelamin</th>
+                    <th className="px-5 py-3">Kelompok / Kategori</th>
+                    <th className="px-5 py-3 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredJamaah.map((person, idx) => {
+                    const personCats = (person.categoryIds || []).map(cid => categories.find(c => c.id === cid)?.nama_kategori).filter(Boolean);
+
+                    return (
+                      <tr key={person.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="px-5 py-3.5 text-slate-400 font-mono text-xs">{idx + 1}</td>
+                        <td className="px-5 py-3.5 font-bold text-slate-900">{person.nama}</td>
+                        <td className="px-5 py-3.5 text-slate-600 font-mono text-xs">
+                          {person.no_whatsapp ? (
+                            <a href={`https://wa.me/${person.no_whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="text-brand-700 hover:underline">
+                              {person.no_whatsapp}
+                            </a>
+                          ) : '-'}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                            person.jenis_kelamin === 'L' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-pink-50 text-pink-700 border border-pink-200'
+                          }`}>
+                            {person.jenis_kelamin === 'L' ? 'Ikhwan (L)' : 'Akhwat (P)'}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex flex-wrap gap-1">
+                            {personCats.map((catName, cIdx) => (
+                              <span key={cIdx} className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                {catName}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => openEditModal(person)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-brand-800 hover:bg-slate-100 transition-colors"
+                              title="Edit Jamaah"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirmId(person.id)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              title="Hapus Jamaah"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : (
           <div className="text-center py-12 p-6 text-slate-500 space-y-2">
             <Users className="w-10 h-10 text-slate-300 mx-auto" />
@@ -441,16 +527,25 @@ export default function JamaahManagement() {
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold transition-colors"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 disabled:opacity-50 text-white text-xs font-bold transition-colors flex items-center gap-2"
                 >
-                  Simpan Data
+                  {isSubmitting ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>Simpan Data</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -537,10 +632,18 @@ export default function JamaahManagement() {
               ) : (
                 <button
                   type="button"
+                  disabled={isImporting}
                   onClick={handleCommitImport}
-                  className="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold transition-colors"
+                  className="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 disabled:opacity-50 text-white text-xs font-bold transition-colors flex items-center gap-2"
                 >
-                  Konfirmasi & Simpan {parsedPreview.length} Jamaah
+                  {isImporting ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Mengimpor...</span>
+                    </>
+                  ) : (
+                    <span>Konfirmasi & Simpan {parsedPreview.length} Jamaah</span>
+                  )}
                 </button>
               )}
             </div>

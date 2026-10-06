@@ -122,13 +122,6 @@ export const deleteCategory = async (req, res, next) => {
   try {
     const categoryId = parseInt(req.params.id);
 
-    if (categoryId === 1) {
-      return res.status(400).json({
-        success: false,
-        message: 'Kategori dasar (Umum) tidak dapat dihapus.',
-      });
-    }
-
     const { data: category, error: getError } = await supabase
       .from('Category')
       .select('id, nama_kategori')

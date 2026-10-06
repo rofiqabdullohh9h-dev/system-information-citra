@@ -295,10 +295,14 @@ export const deleteEvent = async (req, res, next) => {
       });
     }
 
-    // Soft delete
+    // 1. Hapus data relasi terkait agar foreign key bersih
+    await supabase.from('EventCategory').delete().eq('eventId', eventId);
+    await supabase.from('Attendance').delete().eq('eventId', eventId);
+
+    // 2. Hapus permanen dari tabel Event di Supabase
     const { error: deleteError } = await supabase
       .from('Event')
-      .update({ deletedAt: new Date().toISOString() })
+      .delete()
       .eq('id', eventId);
 
     if (deleteError) throw deleteError;
@@ -308,12 +312,12 @@ export const deleteEvent = async (req, res, next) => {
       adminNama: req.user.nama,
       action: 'DELETE_EVENT',
       target: event.tema,
-      details: `Pengurus ${req.user.nama} menghapus jadwal pengajian`,
+      details: `Pengurus ${req.user.nama} menghapus jadwal pengajian: "${event.tema}"`,
     });
 
     res.status(200).json({
       success: true,
-      message: 'Jadwal pengajian berhasil dihapus.',
+      message: 'Jadwal pengajian berhasil dihapus permanen dari database.',
     });
   } catch (error) {
     next(error);

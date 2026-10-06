@@ -71,7 +71,7 @@ export const createAdmin = async (req, res, next) => {
           username: cleanUsername,
           passwordHash,
           email: email ? email.trim() : null,
-          role: 'Pengurus', // Unified role
+          role: 'Pengurus', // Selalu otomatis role Pengurus
           isActive: true,
         },
       ])
@@ -85,7 +85,7 @@ export const createAdmin = async (req, res, next) => {
       adminNama: req.user?.nama || 'Pengurus',
       action: 'CREATE_ADMIN',
       target: newAdmin.nama,
-      details: `Pengurus ${req.user?.nama || 'Pengurus'} menambahkan akun pengurus baru (${newAdmin.username})`,
+      details: `Pengurus ${req.user?.nama || 'Pengurus'} menambahkan akun pengurus baru (@${newAdmin.username})`,
     });
 
     res.status(201).json({
@@ -105,7 +105,7 @@ export const updateAdmin = async (req, res, next) => {
 
     const { data: admin, error: checkError } = await supabase
       .from('Admin')
-      .select('id, nama, username')
+      .select('id, nama, username, role')
       .eq('id', adminId)
       .single();
 
@@ -113,6 +113,18 @@ export const updateAdmin = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: 'Akun pengurus tidak ditemukan.',
+      });
+    }
+
+    const currentUserId = req.user?.id;
+    const isTargetDev = (admin.username || '').toLowerCase() === 'rofiq' || admin.role === 'Developer';
+    const isSelf = currentUserId === admin.id;
+
+    // Proteksi: Akun Developer hanya boleh diubah oleh Developer itu sendiri!
+    if (isTargetDev && !isSelf) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akun utama Developer (@rofiq) tidak dapat diubah oleh pengurus lain.',
       });
     }
 
@@ -146,7 +158,7 @@ export const updateAdmin = async (req, res, next) => {
       adminNama: req.user?.nama || 'Pengurus',
       action: 'UPDATE_ADMIN',
       target: updated.nama,
-      details: `Pengurus ${req.user?.nama || 'Pengurus'} memperbarui data akun ${updated.username}${password ? ' (kata sandi diubah)' : ''}`,
+      details: `${req.user?.nama || 'Pengurus'} memperbarui data akun @${updated.username}${password ? ' (kata sandi diubah)' : ''}`,
     });
 
     res.status(200).json({
@@ -165,7 +177,7 @@ export const deleteAdmin = async (req, res, next) => {
 
     const { data: admin, error: checkError } = await supabase
       .from('Admin')
-      .select('id, nama, username')
+      .select('id, nama, username, role')
       .eq('id', adminId)
       .single();
 
@@ -173,6 +185,26 @@ export const deleteAdmin = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: 'Akun pengurus tidak ditemukan.',
+      });
+    }
+
+    const currentUserId = req.user?.id;
+    const isTargetDev = (admin.username || '').toLowerCase() === 'rofiq' || admin.role === 'Developer';
+    const isSelf = currentUserId === admin.id;
+
+    // 1. Akun Developer TIDAK DAPAT DIHAPUS oleh siapapun
+    if (isTargetDev) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akun Developer (@rofiq) adalah akun pengembang sistem utama dan tidak dapat dihapus.',
+      });
+    }
+
+    // 2. Tidak boleh menghapus akun sendiri saat sedang masuk (mencegah akun terkunci/hilang tak sengaja)
+    if (isSelf) {
+      return res.status(400).json({
+        success: false,
+        message: 'Anda tidak dapat menghapus akun Anda sendiri saat sedang masuk ke sistem.',
       });
     }
 
@@ -186,7 +218,7 @@ export const deleteAdmin = async (req, res, next) => {
     if (!fallbackAdmins || fallbackAdmins.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Tidak dapat menghapus akun ini karena merupakan satu-satunya akun pengurus aktif di sistem. Buat akun pengurus baru terlebih dahulu.',
+        message: 'Tidak dapat menghapus akun ini karena merupakan satu-satunya akun pengurus aktif di sistem.',
       });
     }
 
@@ -217,17 +249,16 @@ export const deleteAdmin = async (req, res, next) => {
     if (deleteError) throw deleteError;
 
     await logAudit({
-      adminId: fallbackAdminId,
-      adminNama: fallbackAdmins[0].nama || 'Pengurus',
+      adminId: currentUserId || fallbackAdminId,
+      adminNama: req.user?.nama || 'Pengurus',
       action: 'DELETE_ADMIN',
       target: admin.nama,
-      details: `Akun pengurus @${admin.username} berhasil dihapus dari sistem`,
+      details: `Pengurus ${req.user?.nama || 'Pengurus'} menghapus akun @${admin.username} dari sistem`,
     });
 
     res.status(200).json({
       success: true,
       message: `Akun pengurus ${admin.nama} (@${admin.username}) berhasil dihapus secara permanen dari sistem.`,
-      isSelfDeleted: adminId === req.user?.id,
     });
   } catch (error) {
     next(error);
@@ -237,17 +268,19 @@ export const deleteAdmin = async (req, res, next) => {
 export const toggleAdminStatus = async (req, res, next) => {
   try {
     const adminId = req.params.id;
+    const currentUserId = req.user?.id;
 
-    if (adminId === req.user.id) {
+    // 1. Tidak boleh mengubah status diri sendiri
+    if (adminId === currentUserId) {
       return res.status(400).json({
         success: false,
-        message: 'Anda tidak dapat menonaktifkan akun Anda sendiri.',
+        message: 'Anda tidak dapat mengubah status akun Anda sendiri.',
       });
     }
 
     const { data: admin, error: getError } = await supabase
       .from('Admin')
-      .select('id, nama, username, isActive')
+      .select('id, nama, username, role, isActive')
       .eq('id', adminId)
       .single();
 
@@ -255,6 +288,14 @@ export const toggleAdminStatus = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: 'Akun pengurus tidak ditemukan.',
+      });
+    }
+
+    // 2. Proteksi akun Developer (@rofiq): Status tidak dapat diubah
+    if ((admin.username || '').toLowerCase() === 'rofiq' || admin.role === 'Developer') {
+      return res.status(403).json({
+        success: false,
+        message: 'Status akun Developer (@rofiq) tidak dapat diubah.',
       });
     }
 
@@ -270,11 +311,11 @@ export const toggleAdminStatus = async (req, res, next) => {
     if (updateError) throw updateError;
 
     await logAudit({
-      adminId: req.user.id,
-      adminNama: req.user.nama,
+      adminId: currentUserId,
+      adminNama: req.user?.nama || 'Pengurus',
       action: 'TOGGLE_ADMIN_STATUS',
       target: updated.nama,
-      details: `Pengurus ${req.user.nama} mengubah status akun ${updated.username} menjadi ${updated.isActive ? 'Aktif' : 'Nonaktif'}`,
+      details: `Pengurus ${req.user?.nama || 'Pengurus'} mengubah status akun @${updated.username} menjadi ${updated.isActive ? 'Aktif' : 'Nonaktif'}`,
     });
 
     res.status(200).json({

@@ -5,19 +5,15 @@ import {
   Plus,
   Search,
   Pin,
-  Calendar,
-  User,
   Edit,
   Trash2,
   ExternalLink,
   Image,
   Upload,
-  CheckCircle2,
   X,
-  AlertCircle,
-  Clock,
-  Sparkles,
-  Share2
+  CheckCircle2,
+  Calendar,
+  User
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
 
@@ -34,20 +30,59 @@ export default function BulletinManager() {
   const [editingItem, setEditingItem] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef(null);
 
-  const handleImageFileChange = (e) => {
+  // Compress image client-side to ensure fast uploads, avoid payload limit, and load instantly on mobile
+  const compressImage = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = document.createElement('img');
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 1200;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height = Math.round((height * MAX_SIZE) / width);
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width = Math.round((width * MAX_SIZE) / height);
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          resolve(dataUrl);
+        };
+        img.onerror = () => reject(new Error('Format gambar tidak didukung'));
+        img.src = event.target.result;
+      };
+      reader.onerror = () => reject(new Error('Gagal membaca file'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleImageFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('Ukuran gambar maksimal 5MB');
-      return;
+    try {
+      showToast('Memproses & mengoptimasi gambar...');
+      const compressed = await compressImage(file);
+      setFormData((prev) => ({ ...prev, gambar_url: compressed }));
+      showToast('Gambar berhasil dipilih!');
+    } catch {
+      showToast('Gagal memproses gambar. Gunakan format JPG, PNG, atau WEBP.');
     }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFormData((prev) => ({ ...prev, gambar_url: reader.result }));
-    };
-    reader.readAsDataURL(file);
   };
 
   // Form State
@@ -111,22 +146,27 @@ export default function BulletinManager() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     if (!formData.judul.trim() || !formData.konten.trim()) {
       showToast('Judul dan isi konten tidak boleh kosong!');
       return;
     }
 
+    setIsSubmitting(true);
     try {
       if (editingItem) {
         await updateBulletin(editingItem.id, formData);
         showToast(`Berhasil memperbarui ${formData.tipe.toLowerCase()}.`);
       } else {
         await addBulletin(formData);
-        showToast(`Alhamdulillah! ${formData.tipe === 'BERITA' ? 'Berita' : 'Pengumuman'} baru berhasil diterbitkan.`);
+        showToast(`${formData.tipe === 'BERITA' ? 'Berita' : 'Pengumuman'} baru berhasil diterbitkan.`);
       }
       setIsModalOpen(false);
     } catch (err) {
       showToast(`Gagal: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -557,9 +597,17 @@ export default function BulletinManager() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-xs sm:text-sm font-bold text-white bg-brand-700 hover:bg-brand-800 rounded-xl shadow-md transition-all"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 text-xs sm:text-sm font-bold text-white bg-brand-700 hover:bg-brand-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-md transition-all flex items-center gap-2"
                 >
-                  {editingItem ? 'Simpan Perubahan' : 'Terbitkan Sekarang'}
+                  {isSubmitting ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Menerbitkan...</span>
+                    </>
+                  ) : (
+                    <span>{editingItem ? 'Simpan Perubahan' : 'Terbitkan Sekarang'}</span>
+                  )}
                 </button>
               </div>
             </form>

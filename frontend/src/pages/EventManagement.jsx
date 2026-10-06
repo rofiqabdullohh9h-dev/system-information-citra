@@ -9,12 +9,10 @@ import {
   Share2,
   CheckCircle,
   X,
-  AlertTriangle,
   Users,
   Clock,
   MapPin,
-  Shield,
-  Sparkles
+  AlertTriangle
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
 
@@ -30,6 +28,7 @@ export default function EventManagement() {
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [waModalEvent, setWaModalEvent] = useState(null);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -92,6 +91,7 @@ export default function EventManagement() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     setFormError('');
 
     if (!formData.tema.trim()) {
@@ -105,6 +105,7 @@ export default function EventManagement() {
       return;
     }
 
+    setIsSubmitting(true);
     try {
       if (editingEvent) {
         await updateEvent(editingEvent.id, formData);
@@ -114,6 +115,8 @@ export default function EventManagement() {
       setModalOpen(false);
     } catch (err) {
       setFormError(err.message || 'Gagal menyimpan kegiatan ke database.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -164,7 +167,81 @@ export default function EventManagement() {
 
       {/* Events Table / Card List */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-subtle overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Card List View (sm:hidden) */}
+        <div className="sm:hidden divide-y divide-slate-100">
+          {events.map((event) => {
+            const eventCats = (event.targetCategoryIds || []).map(id => categories.find(c => c.id === id)).filter(Boolean);
+            return (
+              <div key={event.id} className="p-4 space-y-3 hover:bg-slate-50/70 transition-colors">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-1 min-w-0">
+                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded inline-block">
+                      {new Date(event.tanggal).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+                    </span>
+                    <h3 className="font-bold text-slate-900 text-sm leading-snug">{event.tema}</h3>
+                    {event.pembicara && event.pembicara.trim() && (
+                      <p className="text-xs text-brand-700 font-semibold">{event.pembicara}</p>
+                    )}
+                    <p className="text-[11px] text-slate-500">⏰ {event.waktu} • 📍 {event.lokasi || 'Masjid'}</p>
+                  </div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0 ${event.is_published ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>
+                    {event.is_published ? 'Publik' : 'Internal'}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  {eventCats.map(c => (
+                    <span key={c.id} className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      {c.nama_kategori}
+                    </span>
+                  ))}
+                  {event.target_gender === 'L' && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                      🧔 Pria
+                    </span>
+                  )}
+                  {event.target_gender === 'P' && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-pink-50 text-pink-800 border border-pink-200">
+                      🧕 Wanita
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                  <span className="text-[11px] text-slate-500">
+                    {event.show_attendees ? 'Nama Terbuka' : 'Nama Tersembunyi'}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setWaModalEvent(event)}
+                      className="p-2 rounded-xl text-emerald-700 hover:bg-emerald-50 border border-slate-200 transition-colors"
+                      title="Share WA"
+                    >
+                      <Share2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => openEditModal(event)}
+                      className="p-2 rounded-xl text-slate-600 hover:text-brand-800 hover:bg-slate-100 border border-slate-200 transition-colors"
+                      title="Edit Acara"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmId(event.id)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition-colors"
+                      title="Hapus Acara"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop Table View (hidden sm:block) */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left text-xs sm:text-sm">
             <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
               <tr>
@@ -496,9 +573,17 @@ export default function EventManagement() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-brand-700 hover:bg-brand-800 text-white font-bold text-xs sm:text-sm shadow-xs transition-colors"
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 rounded-xl bg-brand-700 hover:bg-brand-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm shadow-xs transition-colors flex items-center gap-2"
                 >
-                  {editingEvent ? 'Simpan Perubahan' : 'Simpan Acara Baru'}
+                  {isSubmitting ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>{editingEvent ? 'Simpan Perubahan' : 'Simpan Acara Baru'}</span>
+                  )}
                 </button>
               </div>
             </form>

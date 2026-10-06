@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  Calendar, Search, Filter, BarChart3, Users, Clock, ShieldCheck, 
-  MapPin, Sparkles, BookOpen, ChevronRight, CheckCircle2, AlertCircle, 
-  RefreshCw, Megaphone, Pin, Newspaper, ExternalLink, Share2, Tag, X,
-  Check, FileText, ImageIcon
+  Calendar, Search, Filter, BarChart3, Users, Clock, 
+  MapPin, BookOpen, ChevronRight, CheckCircle2, AlertCircle, 
+  Megaphone, Pin, Newspaper, ExternalLink, Share2, Tag, X,
+  Check, FileText
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
 import EventCard from '../components/display/EventCard';
@@ -16,7 +16,6 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
   const jamaahList = useAppStore((state) => state.jamaah);
   const bulletins = useAppStore((state) => state.bulletins);
   const fetchData = useAppStore((state) => state.fetchData);
-  const isLoading = useAppStore((state) => state.isLoading);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
@@ -119,11 +118,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-brand-900 via-brand-800 to-slate-900 text-white pt-10 pb-16 sm:pt-14 sm:pb-24">
-        {/* Subtle decorative background Islamic pattern overlay */}
-        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#34d399_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none"></div>
-        <div className="absolute -top-24 -right-24 w-96 h-96 bg-brand-500/20 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      <section className="relative overflow-hidden bg-gradient-to-b from-brand-900 via-brand-800 to-slate-900 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.2),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(5,150,105,0.15),transparent_50%)] text-white pt-10 pb-16 sm:pt-14 sm:pb-24">
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
@@ -409,12 +404,13 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
                           : 'border-slate-200/90 shadow-subtle hover:border-brand-300'
                       }`}
                     >
-                      {/* Image Thumbnail for Berita (or Fallback Header) */}
-                      {!isPengumuman && b.gambar_url ? (
+                      {/* Image Thumbnail for Berita / Pengumuman */}
+                      {b.gambar_url ? (
                         <div className="relative aspect-video w-full overflow-hidden bg-slate-100">
                           <img
                             src={b.gambar_url}
                             alt={b.judul}
+                            loading="lazy"
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             onError={(e) => {
                               e.target.style.display = 'none';
@@ -642,8 +638,8 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
       {selectedBulletinForModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 my-8">
-            {/* Modal Image Header (if Berita has photo) */}
-            {selectedBulletinForModal.tipe === 'BERITA' && selectedBulletinForModal.gambar_url && (
+            {/* Modal Image Header (if bulletin has photo) */}
+            {selectedBulletinForModal.gambar_url && (
               <div className="relative aspect-video w-full bg-slate-900">
                 <img
                   src={selectedBulletinForModal.gambar_url}
@@ -672,7 +668,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
                     )}
                   </div>
 
-                  {(!selectedBulletinForModal.gambar_url || selectedBulletinForModal.tipe !== 'BERITA') && (
+                  {!selectedBulletinForModal.gambar_url && (
                     <button
                       onClick={() => setSelectedBulletinForModal(null)}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"

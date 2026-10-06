@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Tags, Plus, Edit2, Trash2, X, Users, CheckCircle } from 'lucide-react';
+import { Tags, Plus, Edit2, Trash2, X, CheckCircle } from 'lucide-react';
 import { useAppStore } from '../store/store';
 
 export default function CategoryManagement() {
@@ -13,6 +13,7 @@ export default function CategoryManagement() {
   const [editingCategory, setEditingCategory] = useState(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     nama_kategori: '',
@@ -34,18 +35,26 @@ export default function CategoryManagement() {
     setModalOpen(true);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (!formData.nama_kategori.trim()) return;
 
-    if (editingCategory) {
-      updateCategory(editingCategory.id, formData);
-      showToast('Kategori berhasil diperbarui.');
-    } else {
-      addCategory(formData);
-      showToast('Kategori baru berhasil ditambahkan.');
+    setIsSubmitting(true);
+    try {
+      if (editingCategory) {
+        await updateCategory(editingCategory.id, formData);
+        showToast('Kategori berhasil diperbarui.');
+      } else {
+        await addCategory(formData);
+        showToast('Kategori baru berhasil ditambahkan.');
+      }
+      setModalOpen(false);
+    } catch (err) {
+      showToast(err.message || 'Gagal menyimpan kategori.');
+    } finally {
+      setIsSubmitting(false);
     }
-    setModalOpen(false);
   };
 
   const handleDelete = (id) => {
@@ -89,7 +98,7 @@ export default function CategoryManagement() {
       {/* Category Grid Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {categories.map((cat) => {
-          const members = jamaahList.filter(j => (j.categoryIds || []).includes(cat.id));
+          const members = (jamaahList || []).filter(j => (j.categoryIds || []).includes(cat.id));
           return (
             <div key={cat.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-subtle flex flex-col justify-between hover:shadow-card transition-all">
               <div>
@@ -109,23 +118,21 @@ export default function CategoryManagement() {
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-[11px] text-slate-400 font-mono">ID: #{cat.id}</span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1">
                   <button
                     onClick={() => openEditModal(cat)}
-                    className="p-1.5 rounded-lg text-slate-600 hover:text-brand-800 hover:bg-slate-100 transition-colors"
+                    className="p-2 rounded-xl text-slate-600 hover:text-brand-800 hover:bg-slate-100 transition-colors"
                     title="Edit Kategori"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
-                  {cat.id !== 1 && ( // protect general default category
-                    <button
-                      onClick={() => setDeleteConfirmId(cat.id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                      title="Hapus Kategori"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setDeleteConfirmId(cat.id)}
+                    className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                    title="Hapus Kategori"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -177,16 +184,25 @@ export default function CategoryManagement() {
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-xs font-bold transition-colors"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 disabled:opacity-50 text-white text-xs font-bold transition-colors flex items-center gap-2"
                 >
-                  Simpan Kategori
+                  {isSubmitting ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>Simpan Kategori</span>
+                  )}
                 </button>
               </div>
             </form>

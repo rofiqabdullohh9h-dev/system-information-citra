@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Calendar, Clock, MapPin, User, Users, Shield, ShieldCheck, Share2, CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { X, Calendar, Clock, MapPin, User, Users, Share2, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { useAppStore } from '../store/store';
 
 export default function PublicEventDetail({ event, onClose, showAllAttendees = false }) {
