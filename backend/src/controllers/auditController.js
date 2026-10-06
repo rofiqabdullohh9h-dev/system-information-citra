@@ -21,18 +21,30 @@ export const getAuditLogs = async (req, res, next) => {
     const { data: logs, error } = await query;
     if (error) throw error;
 
-    const formatted = (logs || []).map(l => ({
-      id: l.id,
-      adminId: l.adminId,
-      adminNama: l.adminNama,
-      action: l.action,
-      target: l.target,
-      details: l.details,
-      timestamp: new Date(l.createdAt).toLocaleString('id-ID', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      }),
-    }));
+    const formatted = (logs || []).map(l => {
+      const rawDate = l.createdAt;
+      const normalized = (typeof rawDate === 'string' && !rawDate.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(rawDate))
+        ? `${rawDate}Z`
+        : rawDate;
+      const dateObj = new Date(normalized);
+
+      return {
+        id: l.id,
+        adminId: l.adminId,
+        adminNama: l.adminNama,
+        action: l.action,
+        target: l.target,
+        details: l.details,
+        createdAt: l.createdAt,
+        timestamp: !isNaN(dateObj.getTime())
+          ? dateObj.toLocaleString('id-ID', {
+              timeZone: 'Asia/Jakarta',
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            })
+          : String(rawDate),
+      };
+    });
 
     res.status(200).json({
       success: true,

@@ -62,6 +62,32 @@ export const exportAttendanceToExcel = async (req, res, next) => {
       attMap[att.jamaahId] = att;
     });
 
+    // Cek acara lain pada tanggal yang sama untuk kompensasi otomatis
+    const eventDateStr = event.tanggal ? (event.tanggal.toString().match(/^(\d{4}-\d{2}-\d{2})/)?.[1] || '') : '';
+    const otherSameDayMap = {};
+    if (eventDateStr) {
+      const { data: otherEvents } = await supabase
+        .from('Event')
+        .select(`
+          id, tema, tanggal,
+          attendances:Attendance(jamaahId, status)
+        `)
+        .neq('id', eventId);
+      (otherEvents || []).forEach(oe => {
+        const oeDate = oe.tanggal ? (oe.tanggal.toString().match(/^(\d{4}-\d{2}-\d{2})/)?.[1] || '') : '';
+        if (oeDate === eventDateStr) {
+          (oe.attendances || []).forEach(a => {
+            if (a.status === 'HADIR' || a.status === 'DARING') {
+              otherSameDayMap[a.jamaahId] = {
+                status: a.status,
+                tema: oe.tema,
+              };
+            }
+          });
+        }
+      });
+    }
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'SIAP System (Supabase)';
     workbook.created = new Date();
@@ -104,7 +130,7 @@ export const exportAttendanceToExcel = async (req, res, next) => {
       'Nama Jamaah',
       'No. WhatsApp',
       'Jenis Kelamin',
-      'Kategori Majelis',
+      'Kategori Jamaah',
       'Status Kehadiran',
       'Keterangan & Pencatat',
     ];
@@ -120,7 +146,7 @@ export const exportAttendanceToExcel = async (req, res, next) => {
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
     });
 
-    // Populate Attendance Data: Jika belum ada keterangan/absensi, OTOMATIS JADI ALPA
+    // Populate Attendance Data: Jika belum ada keterangan/absensi, OTOMATIS JADI ALPA (kecuali hadir di sesi sore/lain)
     let rowIndex = 9;
     let countHadir = 0;
     let countDaring = 0;
@@ -131,14 +157,15 @@ export const exportAttendanceToExcel = async (req, res, next) => {
     eligibleJamaah.forEach((person, index) => {
       const row = worksheet.getRow(rowIndex);
       const existing = attMap[person.id];
+      const otherAtt = !existing ? otherSameDayMap[person.id] : null;
 
-      // JIKA TIDAK ADA KETERANGAN: OTOMATIS JADI ALPA (Tanpa Keterangan)
-      const status = existing?.status || 'ALPA';
+      // JIKA TIDAK ADA KETERANGAN: CEK SESI LAIN, JIKA TIDAK ADA OTOMATIS ALPA
+      const status = existing?.status || (otherAtt ? otherAtt.status : 'ALPA');
       const displayStatus = status === 'ALPA' ? 'Tanpa Keterangan' : status;
-      const isAuto = !existing;
+      const isAuto = !existing && !otherAtt;
       const petugas = existing?.recordedBy?.nama 
         ? `Petugas: ${existing.recordedBy.nama}` 
-        : (isAuto ? 'Tanpa Keterangan' : 'Pengurus');
+        : (otherAtt ? `Ikut ngaji di ${otherAtt.tema}` : (isAuto ? 'Tanpa Keterangan' : 'Pengurus'));
 
       if (status === 'HADIR') countHadir++;
       else if (status === 'DARING') countDaring++;

@@ -12,9 +12,11 @@ import {
   UserCheck,
   UserX,
   AlertTriangle,
-  KeyRound
+  KeyRound,
+  Phone
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
+import { formatDateTimeWIB } from '../utils/dateUtils';
 
 export default function AdminAccounts() {
   const admins = useAppStore((state) => state.admins);
@@ -45,7 +47,7 @@ export default function AdminAccounts() {
     username: '',
     nama: '',
     password: '',
-    email: '',
+    no_whatsapp: '',
     role: 'Pengurus',
   });
 
@@ -53,7 +55,7 @@ export default function AdminAccounts() {
     id: '',
     username: '',
     nama: '',
-    email: '',
+    no_whatsapp: '',
     newPassword: '',
   });
 
@@ -68,7 +70,7 @@ export default function AdminAccounts() {
       username: '',
       nama: '',
       password: '',
-      email: '',
+      no_whatsapp: '',
       role: 'Pengurus',
     });
     setErrorMessage('');
@@ -90,7 +92,7 @@ export default function AdminAccounts() {
       id: adm.id,
       username: adm.username,
       nama: adm.nama,
-      email: adm.email || '',
+      no_whatsapp: adm.no_whatsapp || adm.email || '',
       newPassword: '',
     });
     setErrorMessage('');
@@ -122,7 +124,7 @@ export default function AdminAccounts() {
         nama: addForm.nama.trim(),
         username: addForm.username.trim().toLowerCase(),
         password: addForm.password.trim(),
-        email: addForm.email.trim() || null,
+        no_whatsapp: addForm.no_whatsapp.trim() || null,
         role: 'Pengurus',
       });
       setAddModalOpen(false);
@@ -153,7 +155,7 @@ export default function AdminAccounts() {
     try {
       const payload = {
         nama: editForm.nama.trim(),
-        email: editForm.email.trim() || null,
+        no_whatsapp: editForm.no_whatsapp.trim() || null,
       };
       if (editForm.newPassword && editForm.newPassword.trim()) {
         payload.password = editForm.newPassword.trim();
@@ -267,7 +269,12 @@ export default function AdminAccounts() {
                         )}
                       </div>
                       <div className="text-xs text-brand-700 font-mono font-semibold">@{adm.username}</div>
-                      {adm.email && <div className="text-[11px] text-slate-400 truncate">{adm.email}</div>}
+                      {(adm.no_whatsapp || adm.email) && (
+                        <div className="text-[11px] text-slate-500 font-mono truncate flex items-center gap-1 mt-0.5">
+                          <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                          <span>{adm.no_whatsapp || adm.email}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="shrink-0 flex flex-col items-end gap-1">
@@ -295,7 +302,7 @@ export default function AdminAccounts() {
 
                 <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
                   <span className="text-[11px] text-slate-400">
-                    Login: {adm.lastLogin || '-'}
+                    Login: {adm.lastLogin ? formatDateTimeWIB(adm.lastLogin) : '-'}
                   </span>
                   <div className="flex items-center gap-2">
                     {canToggle && (
@@ -380,7 +387,14 @@ export default function AdminAccounts() {
                               </span>
                             )}
                           </span>
-                          <span className="text-xs text-slate-400">{adm.email || 'Tidak ada email'}</span>
+                          {(adm.no_whatsapp || adm.email) ? (
+                            <span className="text-xs text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                              <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span>{adm.no_whatsapp || adm.email}</span>
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400">Tidak ada WhatsApp</span>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -411,7 +425,7 @@ export default function AdminAccounts() {
                       )}
                     </td>
                     <td className="px-5 py-4 text-slate-500 text-xs">
-                      {adm.lastLogin || '-'}
+                      {adm.lastLogin ? formatDateTimeWIB(adm.lastLogin) : '-'}
                     </td>
                     <td className="px-5 py-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
@@ -558,14 +572,18 @@ export default function AdminAccounts() {
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
-                  Email (Opsional)
+                  Nomor WhatsApp (Opsional)
                 </label>
-                <input
-                  type="email"
-                  value={addForm.email}
-                  onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-                />
+                <div className="relative">
+                  <input
+                    type="tel"
+                    placeholder="Contoh: 081234567890"
+                    value={addForm.no_whatsapp}
+                    onChange={(e) => setAddForm({ ...addForm, no_whatsapp: e.target.value })}
+                    className="w-full pl-9 pr-3.5 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 font-mono"
+                  />
+                  <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
@@ -639,14 +657,18 @@ export default function AdminAccounts() {
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
-                  Email
+                  Nomor WhatsApp (Opsional)
                 </label>
-                <input
-                  type="email"
-                  value={editForm.email}
-                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-                />
+                <div className="relative">
+                  <input
+                    type="tel"
+                    placeholder="Contoh: 081234567890"
+                    value={editForm.no_whatsapp}
+                    onChange={(e) => setEditForm({ ...editForm, no_whatsapp: e.target.value })}
+                    className="w-full pl-9 pr-3.5 py-2.5 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 font-mono"
+                  />
+                  <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                </div>
               </div>
 
               <div>

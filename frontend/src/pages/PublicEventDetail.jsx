@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Calendar, Clock, MapPin, User, Users, Share2, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { useAppStore } from '../store/store';
+import { generateEventShareText } from '../utils/shareUtils';
 
 export default function PublicEventDetail({ event, onClose, showAllAttendees = false }) {
   const [activeGenderFilter, setActiveGenderFilter] = useState('ALL');
@@ -116,14 +117,7 @@ export default function PublicEventDetail({ event, onClose, showAllAttendees = f
   const totalPeserta = attendeeDetails.length;
 
   const handleShareWA = () => {
-    const pemateriText = event.pembicara && event.pembicara.trim() ? `🎙️ *Pemateri:* ${event.pembicara}\n` : '';
-    const text = `*INFORMASI JADWAL PENGAJIAN*\n\n` +
-      `📌 *Tema:* ${event.tema}\n` +
-      `📅 *Hari/Tanggal:* ${formatIndoDate(event.tanggal)}\n` +
-      `⏰ *Waktu:* ${event.waktu}\n` +
-      pemateriText +
-      `📍 *Lokasi:* ${event.lokasi || 'Masjid Jami At-Taqwa'}\n\n` +
-      `Info portal: ${window.location.origin}`;
+    const text = generateEventShareText(event, categories);
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 

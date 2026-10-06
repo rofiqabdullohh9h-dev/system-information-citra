@@ -1,14 +1,8 @@
 import { create } from 'zustand';
 import { api } from '../services/api';
+import { formatDateTimeWIB } from '../utils/dateUtils';
 
-// Kategori master default sesuai jenjang kelompok usia/generasi
-const DEFAULT_CATEGORIES = [
-  { id: 1, nama_kategori: 'Umum', deskripsi: 'Semua kelompok & usia jamaah', color: 'emerald', memberCount: 0 },
-  { id: 2, nama_kategori: 'Dewasa', deskripsi: 'Kelompok usia dewasa', color: 'blue', memberCount: 0 },
-  { id: 3, nama_kategori: 'Lansia', deskripsi: 'Kelompok usia lanjut', color: 'purple', memberCount: 0 },
-  { id: 4, nama_kategori: 'Remaja & Muda-Mudi', deskripsi: 'Kelompok generasi muda / milenial', color: 'amber', memberCount: 0 },
-  { id: 5, nama_kategori: 'Anak-anak (Cabe Rawit)', deskripsi: 'Kelompok anak-anak & pembinaan dini', color: 'pink', memberCount: 0 },
-];
+
 
 // Helper to load/save in localStorage
 const getSaved = (key, fallback) => {
@@ -54,9 +48,23 @@ export const syncPortalUrl = (mode) => {
   }
 };
 
+// Helper broadcast sinkronisasi multi-tab/multi-window secara instan
+export const notifyDataChanged = () => {
+  try {
+    if (typeof window !== 'undefined') {
+      if ('BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('siap_channel');
+        bc.postMessage({ type: 'DATA_SYNC', timestamp: Date.now() });
+        bc.close();
+      }
+      localStorage.setItem('siap_last_mutation', String(Date.now()));
+    }
+  } catch {}
+};
+
 export const useAppStore = create((set, get) => ({
   // Data State - BERSIH DARI DATA DUMMY
-  categories: getSaved('categories', DEFAULT_CATEGORIES),
+  categories: getSaved('categories', []),
   jamaah: getSaved('jamaah', []),
   events: getSaved('events', []),
   attendance: getSaved('attendance', {}),
@@ -143,7 +151,7 @@ export const useAppStore = create((set, get) => ({
       };
 
       // 1. Categories
-      if (catResult.status === 'fulfilled' && catResult.value?.success && Array.isArray(catResult.value.data) && catResult.value.data.length > 0) {
+      if (catResult.status === 'fulfilled' && catResult.value?.success && Array.isArray(catResult.value.data)) {
         const formattedCats = catResult.value.data.map(c => ({
           ...c,
           color: c.id === 1 ? 'emerald' : c.id === 2 ? 'pink' : c.id === 3 ? 'blue' : c.id === 4 ? 'amber' : 'purple',
@@ -246,7 +254,7 @@ export const useAppStore = create((set, get) => ({
         localStorage.setItem('siap_token', res.token);
         const loggedUser = {
           ...res.user,
-          lastLogin: new Date().toLocaleString('id-ID'),
+          lastLogin: formatDateTimeWIB(new Date()),
         };
         saveItem('currentUser', loggedUser);
         syncPortalUrl('admin');
@@ -278,7 +286,7 @@ export const useAppStore = create((set, get) => ({
       return { success: false, message: 'Password salah. (Gunakan kata sandi: admin123)' };
     }
 
-    const updatedUser = { ...user, lastLogin: new Date().toLocaleString('id-ID') };
+    const updatedUser = { ...user, lastLogin: formatDateTimeWIB(new Date()) };
     saveItem('currentUser', updatedUser);
     syncPortalUrl('admin');
     set({ currentUser: updatedUser, portalMode: 'admin' });
@@ -441,6 +449,7 @@ export const useAppStore = create((set, get) => ({
       `Merekam kehadiran ${totalRecorded} jamaah oleh ${user.nama}`
     );
 
+    notifyDataChanged();
     return { success: true, count: totalRecorded };
   },
 
@@ -518,6 +527,8 @@ export const useAppStore = create((set, get) => ({
         set({ categories: updated });
         saveItem('categories', updated);
         get().addAuditLog('CREATE_CATEGORY', newCat.nama_kategori, `Menambahkan kategori baru`);
+        notifyDataChanged();
+        await get().fetchData();
         return newCat;
       }
     } catch (err) {
@@ -535,6 +546,8 @@ export const useAppStore = create((set, get) => ({
       set({ categories: updated });
       saveItem('categories', updated);
       get().addAuditLog('UPDATE_CATEGORY', catData.nama_kategori || `Kategori #${id}`, `Memperbarui kategori`);
+      notifyDataChanged();
+      await get().fetchData();
       return updatedCat;
     } catch (err) {
       console.warn('API updateCategory failed:', err.message);
@@ -553,6 +566,8 @@ export const useAppStore = create((set, get) => ({
       console.warn('API deleteCategory failed:', err.message);
     }
     get().addAuditLog('DELETE_CATEGORY', target?.nama_kategori || `Kategori #${id}`, `Menghapus kategori`);
+    notifyDataChanged();
+    await get().fetchData();
   },
 
   // =========================================================================
@@ -628,7 +643,7 @@ export const useAppStore = create((set, get) => ({
       adminNama: user.nama,
       action,
       target,
-      timestamp: new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
+      timestamp: formatDateTimeWIB(new Date()),
       details,
     };
     const updated = [newLog, ...get().auditLogs.slice(0, 99)];
@@ -649,17 +664,18 @@ export const useAppStore = create((set, get) => ({
         console.warn('API resetData failed or Supabase not yet live:', err.message);
       }
 
-      // 2. Kosongkan seluruh data transaksi di local state
+      // 2. Kosongkan seluruh data operasional di local state (termasuk kategori)
       set({
+        categories: [],
         events: [],
         jamaah: [],
         attendance: {},
         auditLogs: [],
         attendanceDrafts: {},
-        categories: DEFAULT_CATEGORIES,
       });
 
-      // 3. Bersihkan penyimpanan browser untuk data transaksi
+      // 3. Bersihkan penyimpanan browser
+      localStorage.removeItem('siap_categories');
       localStorage.removeItem('siap_events');
       localStorage.removeItem('siap_jamaah');
       localStorage.removeItem('siap_attendance');
@@ -674,15 +690,16 @@ export const useAppStore = create((set, get) => ({
         adminNama: user.nama,
         action: 'RESET_DATA',
         target: 'Database Pengujian',
-        timestamp: new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' }),
-        details: 'Seluruh data pengujian (jadwal, jamaah, absensi, audit log) berhasil dibersihkan ke kondisi kosong.',
+        timestamp: formatDateTimeWIB(new Date()),
+        details: 'Seluruh data (kategori, jadwal, jamaah, absensi, audit log) berhasil dibersihkan ke kondisi kosong. Akun pengurus tetap aman.',
       };
       set({ auditLogs: [resetLog] });
       saveItem('auditLogs', [resetLog]);
+      notifyDataChanged();
 
       return {
         success: true,
-        message: 'Data pengujian berhasil direset ke kondisi bersih (Kosong). Akun pengurus dan kategori master tetap aman.',
+        message: 'Seluruh kategori dan data pengujian berhasil dikosongkan. Akun pengurus tetap aman.',
       };
     } catch (error) {
       console.error('Reset database failed:', error);

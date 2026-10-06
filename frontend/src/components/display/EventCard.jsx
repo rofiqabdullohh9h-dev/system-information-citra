@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Calendar, Clock, MapPin, User, Users, Share2, Eye, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../../store/store';
+import { generateEventShareText } from '../../utils/shareUtils';
 
 function EventCard({ event, onOpenDetail }) {
   const categories = useAppStore((state) => state.categories);
@@ -80,20 +81,7 @@ function EventCard({ event, onOpenDetail }) {
   // WhatsApp share generator
   const handleShareWA = (e) => {
     e.stopPropagation();
-    const targetCat = eventCategories[0]?.nama_kategori || 'Umum';
-    const genderSuffix = targetGender === 'L' ? ' (Khusus Pria)' : targetGender === 'P' ? ' (Khusus Wanita)' : '';
-    const pemateriText = event.pembicara && event.pembicara.trim() ? `🎙️ *Pemateri:* ${event.pembicara}\n` : '';
-    const text = `*INFORMASI JADWAL PENGAJIAN*\n\n` +
-      `📌 *Tema:* ${event.tema}\n` +
-      `📅 *Hari/Tanggal:* ${formatIndoDate(event.tanggal)}\n` +
-      `⏰ *Waktu:* ${event.waktu}\n` +
-      pemateriText +
-      `📍 *Lokasi:* ${event.lokasi || 'Masjid Jami At-Taqwa'}\n` +
-      `👥 *Sasaran:* ${targetCat}${genderSuffix}\n\n` +
-      `${event.deskripsi ? `_\"${event.deskripsi}\"_\n\n` : ''}` +
-      `Mari luangkan waktu hadir menuntut ilmu dan silaturahim.\n` +
-      `Info portal & absensi: ${window.location.origin}`;
-    
+    const text = generateEventShareText(event, categories);
     const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
     window.open(waUrl, '_blank');
   };
@@ -149,7 +137,7 @@ function EventCard({ event, onOpenDetail }) {
 
         {/* Description snippet */}
         <p className="text-xs sm:text-sm text-slate-600 mt-2.5 line-clamp-2 leading-relaxed">
-          {event.deskripsi || 'Jadwal kajian rutin majelis taklim.'}
+          {event.deskripsi || 'Jadwal kajian rutin.'}
         </p>
 
         {/* Meta Info: Date, Time, Location */}

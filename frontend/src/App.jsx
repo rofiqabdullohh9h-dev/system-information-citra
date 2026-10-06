@@ -73,10 +73,11 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [currentUser, setPortalMode]);
 
-  // 2. Sync data on mount, window focus / visibility change, and gentle background polling
+  // 2. Sync data on mount, window focus / visibility change, and real-time multi-admin polling
   useEffect(() => {
     fetchData();
 
+    // Trigger sync saat tab aktif kembali
     const handleSync = () => {
       if (!document.hidden) {
         fetchData();
@@ -85,7 +86,28 @@ export default function App() {
     window.addEventListener('focus', handleSync);
     document.addEventListener('visibilitychange', handleSync);
 
-    const pollIntervalMs = currentUser ? 30000 : 90000;
+    // Sinkronisasi instan antar tab/jendela (0 ms) via storage event & BroadcastChannel
+    const handleStorage = (e) => {
+      if (e.key === 'siap_last_mutation' || e.key?.startsWith('siap_')) {
+        fetchData();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    let bc = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        bc = new BroadcastChannel('siap_channel');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'DATA_SYNC') {
+            fetchData();
+          }
+        };
+      } catch {}
+    }
+
+    // Polling berkala (4 detik saat login pengurus, 8 detik saat mode publik)
+    const pollIntervalMs = currentUser ? 4000 : 8000;
     const interval = setInterval(() => {
       if (!document.hidden) {
         fetchData();
@@ -94,8 +116,10 @@ export default function App() {
 
     return () => {
       window.removeEventListener('focus', handleSync);
+      window.removeEventListener('storage', handleStorage);
       document.removeEventListener('visibilitychange', handleSync);
       clearInterval(interval);
+      if (bc) bc.close();
     };
   }, [currentUser, fetchData]);
 

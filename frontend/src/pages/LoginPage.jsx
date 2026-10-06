@@ -157,7 +157,7 @@ export default function LoginPage() {
 
       {/* Footer */}
       <div className="max-w-md w-full mx-auto text-center text-xs text-slate-400 py-2">
-        &copy; {new Date().getFullYear()} Sistem Informasi Citra &bull; Manajemen Majelis & Kehadiran
+        &copy; {new Date().getFullYear()} Sistem Informasi Citra &bull; Manajemen Informasi & Kehadiran
       </div>
     </div>
   );

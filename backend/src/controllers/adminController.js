@@ -11,9 +11,32 @@ export const getAllAdmins = async (req, res, next) => {
 
     if (error) throw error;
 
+    const formatted = (admins || []).map(adm => {
+      let formattedLastLogin = adm.lastLogin;
+      if (adm.lastLogin) {
+        const rawDate = adm.lastLogin;
+        const normalized = (typeof rawDate === 'string' && !rawDate.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(rawDate))
+          ? `${rawDate}Z`
+          : rawDate;
+        const dateObj = new Date(normalized);
+        if (!isNaN(dateObj.getTime())) {
+          formattedLastLogin = dateObj.toLocaleString('id-ID', {
+            timeZone: 'Asia/Jakarta',
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          });
+        }
+      }
+      return {
+        ...adm,
+        lastLogin: formattedLastLogin,
+        no_whatsapp: adm.email || '',
+      };
+    });
+
     res.status(200).json({
       success: true,
-      data: admins || [],
+      data: formatted,
     });
   } catch (error) {
     next(error);
@@ -22,7 +45,8 @@ export const getAllAdmins = async (req, res, next) => {
 
 export const createAdmin = async (req, res, next) => {
   try {
-    const { nama, username, password, email } = req.body;
+    const { nama, username, password, no_whatsapp, email } = req.body;
+    const waVal = no_whatsapp !== undefined ? no_whatsapp : email;
 
     if (!nama || !nama.trim()) {
       return res.status(400).json({
@@ -70,7 +94,7 @@ export const createAdmin = async (req, res, next) => {
           nama: nama.trim(),
           username: cleanUsername,
           passwordHash,
-          email: email ? email.trim() : null,
+          email: waVal && waVal.trim() ? waVal.trim() : null,
           role: 'Pengurus', // Selalu otomatis role Pengurus
           isActive: true,
         },
@@ -79,6 +103,11 @@ export const createAdmin = async (req, res, next) => {
       .single();
 
     if (error) throw error;
+
+    const formattedAdmin = {
+      ...newAdmin,
+      no_whatsapp: newAdmin.email || '',
+    };
 
     await logAudit({
       adminId: req.user?.id || 'admin-001',
@@ -91,7 +120,7 @@ export const createAdmin = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'Akun pengurus berhasil dibuat dengan kata sandi yang disesuaikan.',
-      data: newAdmin,
+      data: formattedAdmin,
     });
   } catch (error) {
     next(error);
@@ -101,7 +130,8 @@ export const createAdmin = async (req, res, next) => {
 export const updateAdmin = async (req, res, next) => {
   try {
     const adminId = req.params.id;
-    const { nama, email, password } = req.body;
+    const { nama, no_whatsapp, email, password } = req.body;
+    const waVal = no_whatsapp !== undefined ? no_whatsapp : email;
 
     const { data: admin, error: checkError } = await supabase
       .from('Admin')
@@ -130,7 +160,7 @@ export const updateAdmin = async (req, res, next) => {
 
     const updateData = {
       ...(nama && { nama: nama.trim() }),
-      ...(email !== undefined && { email: email ? email.trim() : null }),
+      ...(waVal !== undefined && { email: waVal && waVal.trim() ? waVal.trim() : null }),
       updatedAt: new Date().toISOString(),
     };
 
@@ -152,6 +182,11 @@ export const updateAdmin = async (req, res, next) => {
       .single();
 
     if (updateError) throw updateError;
+
+    const formattedUpdated = {
+      ...updated,
+      no_whatsapp: updated.email || '',
+    };
 
     await logAudit({
       adminId: req.user?.id || 'admin-001',
@@ -330,39 +365,29 @@ export const toggleAdminStatus = async (req, res, next) => {
 
 export const resetDatabase = async (req, res, next) => {
   try {
-    // 1. Delete all transactional test data
+    // 1. Kosongkan seluruh data operasional & pengujian (termasuk kategori)
     await supabase.from('Attendance').delete().neq('id', 0);
     await supabase.from('EventCategory').delete().neq('eventId', 0);
     await supabase.from('Event').delete().neq('id', 0);
     await supabase.from('JamaahCategory').delete().neq('jamaahId', 0);
     await supabase.from('Jamaah').delete().neq('id', 0);
+    await supabase.from('Category').delete().neq('id', 0);
     await supabase.from('AuditLog').delete().neq('id', 0);
 
-    // 2. Ensure default master categories exist
-    const defaultCategories = [
-      { id: 1, nama_kategori: 'Umum', deskripsi: 'Semua jamaah umum majelis taklim' },
-      { id: 2, nama_kategori: 'Ibu-ibu (Muslimah)', deskripsi: 'Kelompok pengajian muslimah / akhwat' },
-      { id: 3, nama_kategori: 'Bapak-bapak', deskripsi: 'Kelompok pengajian bapak-bapak / ikhwan' },
-      { id: 4, nama_kategori: 'Remaja & Muda-Mudi', deskripsi: 'Kelompok generasi muda / milenial' },
-      { id: 5, nama_kategori: 'Pengurus Inti', deskripsi: 'Struktur pengurus & asatidz ormas' },
-    ];
+    // PENTING: TABEL ADMIN SAMA SEKALI TIDAK DISENTUH! AKUN PENGURUS 100% TETAP UTUH & AMAN.
 
-    for (const cat of defaultCategories) {
-      await supabase.from('Category').upsert(cat, { onConflict: 'id' });
-    }
-
-    // 3. Log Audit
+    // 2. Catat Log Audit Reset
     await logAudit({
       adminId: req.user?.id || null,
       adminNama: req.user?.nama || 'Pengurus',
       action: 'RESET_DATA',
       target: 'Database',
-      details: 'Mereset data jadwal, absensi, dan jamaah ke kondisi bersih untuk pengujian',
+      details: 'Mereset database ke kondisi bersih (kosong). Seluruh kategori, jadwal, absensi, dan jamaah dikosongkan. Akun pengurus tetap aman.',
     });
 
     res.status(200).json({
       success: true,
-      message: 'Data pengujian berhasil direset ke kondisi bersih (Kosong).',
+      message: 'Seluruh data (kategori, jadwal, absensi, jamaah) berhasil dikosongkan. Akun pengurus tetap aman.',
     });
   } catch (error) {
     next(error);

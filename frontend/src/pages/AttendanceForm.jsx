@@ -10,6 +10,30 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
 
+// Timezone-safe local date string (YYYY-MM-DD)
+const getLocalDateStr = (d) => {
+  if (!d) return '';
+  if (typeof d === 'string') {
+    const match = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+  const dateObj = new Date(d);
+  if (isNaN(dateObj.getTime())) return '';
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getOtherSessionBadgeText = (otherSession) => {
+  if (!otherSession) return '';
+  const temaLower = (otherSession.tema || '').toLowerCase();
+  if (temaLower.includes('sore')) return `Ikut ngaji di acara sore (${otherSession.tema})`;
+  if (temaLower.includes('malam')) return `Ikut ngaji di acara malam (${otherSession.tema})`;
+  if (temaLower.includes('pagi') || temaLower.includes('subuh')) return `Ikut ngaji di acara pagi (${otherSession.tema})`;
+  return `Ikut ngaji di acara sore (${otherSession.tema})`;
+};
+
 const STATUS_OPTIONS = [
   { key: 'HADIR', label: 'Hadir', shortLabel: 'Hadir', bg: 'bg-emerald-600', activeClass: 'bg-emerald-600 text-white shadow-xs' },
   { key: 'DARING', label: 'Daring', shortLabel: 'Daring', bg: 'bg-sky-600', activeClass: 'bg-sky-600 text-white shadow-xs' },
@@ -56,9 +80,9 @@ const MobileAttendanceCard = React.memo(function MobileAttendanceCard({
       </div>
 
       {otherSession && (
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-          <span className="truncate">Hadir di {otherSession.tema}</span>
+          <span className="truncate">{getOtherSessionBadgeText(otherSession)}</span>
         </div>
       )}
 
@@ -109,7 +133,7 @@ const DesktopAttendanceRow = React.memo(function DesktopAttendanceRow({
         {otherSession && (
           <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-            Sudah Hadir di {otherSession.tema}
+            {getOtherSessionBadgeText(otherSession)}
           </span>
         )}
       </td>
@@ -161,14 +185,14 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
   const currentUser = useAppStore((state) => state.currentUser);
 
   // Today's date string YYYY-MM-DD
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateStr(new Date());
 
   // Auto-select event: priority to propInitialEventId, then today's event, then first event
   const initialEventId = useMemo(() => {
     if (propInitialEventId && events.some(e => e.id === Number(propInitialEventId))) {
       return Number(propInitialEventId);
     }
-    const todayEvent = events.find(e => e.tanggal && (e.tanggal.startsWith(todayStr) || new Date(e.tanggal).toISOString().split('T')[0] === todayStr));
+    const todayEvent = events.find(e => e.tanggal && getLocalDateStr(e.tanggal) === todayStr);
     return todayEvent ? todayEvent.id : (events[0]?.id || null);
   }, [events, propInitialEventId, todayStr]);
 
@@ -191,7 +215,7 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
       if (propInitialEventId && events.some(e => e.id === Number(propInitialEventId))) {
         setSelectedEventId(Number(propInitialEventId));
       } else {
-        const todayEvent = events.find(e => e.tanggal && (e.tanggal.startsWith(todayStr) || new Date(e.tanggal).toISOString().split('T')[0] === todayStr));
+        const todayEvent = events.find(e => e.tanggal && getLocalDateStr(e.tanggal) === todayStr);
         setSelectedEventId(todayEvent ? todayEvent.id : events[0].id);
       }
     }
@@ -325,7 +349,7 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
   // Current event date (YYYY-MM-DD)
   const currentEventDateStr = useMemo(() => {
     if (!currentEvent?.tanggal) return null;
-    return new Date(currentEvent.tanggal).toISOString().split('T')[0];
+    return getLocalDateStr(currentEvent.tanggal);
   }, [currentEvent]);
 
   // Cek acara lain di hari/tanggal yang sama (Pilihan A: Kompensasi Sesi Sore/Malam)
@@ -333,7 +357,7 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
     if (!currentEventDateStr || !selectedEventId) return [];
     return events.filter(e => {
       if (e.id === Number(selectedEventId)) return false;
-      const d = e.tanggal ? new Date(e.tanggal).toISOString().split('T')[0] : null;
+      const d = getLocalDateStr(e.tanggal);
       return d === currentEventDateStr;
     });
   }, [events, selectedEventId, currentEventDateStr]);
@@ -371,7 +395,8 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
     let alpa = 0;
 
     eligibleJamaah.forEach(j => {
-      const s = localAttendance[j.id];
+      const otherSession = attendedSameDayOtherEvent[j.id];
+      const s = localAttendance[j.id] || (otherSession ? otherSession.status : undefined);
       if (s === 'HADIR') hadir++;
       else if (s === 'DARING') daring++;
       else if (s === 'IZIN') izin++;
@@ -382,7 +407,7 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
     const recorded = hadir + daring + izin + sakit + alpa;
     const unrecorded = Math.max(0, totalEligible - recorded);
     return { hadir, daring, izin, sakit, alpa, recorded, unrecorded };
-  }, [eligibleJamaah, localAttendance, totalEligible]);
+  }, [eligibleJamaah, localAttendance, attendedSameDayOtherEvent, totalEligible]);
 
   const statusOptions = [
     { key: 'HADIR', label: 'Hadir', bg: 'bg-emerald-600', activeClass: 'bg-emerald-600 text-white shadow-xs' },
@@ -665,9 +690,9 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
                 {/* Mobile Card List View (sm:hidden) */}
                 <div className="sm:hidden divide-y divide-slate-100">
                   {displayedJamaah.map((person, index) => {
-                    const currentStatus = localAttendance[person.id];
-                    const personCats = (person.categoryIds || []).map(id => categoryMap[id]).filter(Boolean);
                     const otherSession = attendedSameDayOtherEvent[person.id];
+                    const currentStatus = localAttendance[person.id] || (otherSession ? otherSession.status : undefined);
+                    const personCats = (person.categoryIds || []).map(id => categoryMap[id]).filter(Boolean);
 
                     return (
                       <MobileAttendanceCard
@@ -697,9 +722,9 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {displayedJamaah.map((person, index) => {
-                        const currentStatus = localAttendance[person.id];
-                        const personCats = (person.categoryIds || []).map(id => categoryMap[id]).filter(Boolean);
                         const otherSession = attendedSameDayOtherEvent[person.id];
+                        const currentStatus = localAttendance[person.id] || (otherSession ? otherSession.status : undefined);
+                        const personCats = (person.categoryIds || []).map(id => categoryMap[id]).filter(Boolean);
 
                         return (
                           <DesktopAttendanceRow

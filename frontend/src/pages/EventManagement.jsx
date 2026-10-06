@@ -15,6 +15,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
+import { generateEventShareText } from '../utils/shareUtils';
 
 export default function EventManagement() {
   const events = useAppStore((state) => state.events);
@@ -128,19 +129,7 @@ export default function EventManagement() {
 
   // WhatsApp template preview
   const generateWaText = (event) => {
-    const cat = categories.find(c => c.id === (event.targetCategoryIds?.[0] || 1))?.nama_kategori || 'Umum';
-    const genderSuffix = event.target_gender === 'L' ? ' (Khusus Pria)' : event.target_gender === 'P' ? ' (Khusus Wanita)' : '';
-    const pemateriText = event.pembicara && event.pembicara.trim() ? `🎙️ *Pemateri:* ${event.pembicara}\n` : '';
-    return `*INFORMASI JADWAL PENGAJIAN*\n\n` +
-      `📌 *Tema:* ${event.tema}\n` +
-      `📅 *Hari/Tanggal:* ${new Date(event.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}\n` +
-      `⏰ *Waktu:* ${event.waktu}\n` +
-      pemateriText +
-      `📍 *Lokasi:* ${event.lokasi || '-'}\n` +
-      `👥 *Sasaran:* ${cat}${genderSuffix}\n\n` +
-      `${event.deskripsi ? `_\"${event.deskripsi}\"_\n\n` : ''}` +
-      `Mari hadir tepat waktu menjalin ukhuwah & thalabul 'ilmi.\n` +
-      `Tautan Portal Jamaah: ${window.location.origin}`;
+    return generateEventShareText(event, categories);
   };
 
   const copyToClipboard = (text) => {

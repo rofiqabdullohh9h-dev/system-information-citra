@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
 import PublicEventDetail from './PublicEventDetail';
+import { formatDateTimeWIB } from '../utils/dateUtils';
 
 export default function AdminOverview({ onNavigate }) {
   const jamaahList = useAppStore((state) => state.jamaah);
@@ -233,7 +234,7 @@ export default function AdminOverview({ onNavigate }) {
               </div>
 
               <p className="text-xs text-slate-500 mb-4 line-clamp-1">
-                {cat.deskripsi || 'Kelompok majelis jamaah terdaftar'}
+                {cat.deskripsi || 'Kelompok kategori jamaah terdaftar'}
               </p>
 
               {/* Progress bar */}
@@ -449,7 +450,9 @@ export default function AdminOverview({ onNavigate }) {
                   <div key={log.id} className="text-xs space-y-1 border-b border-slate-100 pb-2.5 last:border-0 last:pb-0">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-slate-800">{log.adminNama}</span>
-                      <span className="text-[10px] text-slate-400 font-mono">{log.timestamp}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {formatDateTimeWIB(log.createdAt || log.timestamp)}
+                      </span>
                     </div>
                     <p className="text-slate-600 line-clamp-1">
                       <span className="font-semibold text-brand-700">[{log.action}]</span> {log.details}

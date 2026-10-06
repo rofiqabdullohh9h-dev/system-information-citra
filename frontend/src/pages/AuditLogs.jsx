@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { History, Search } from 'lucide-react';
 import { useAppStore } from '../store/store';
+import { formatDateTimeWIB } from '../utils/dateUtils';
 
 export default function AuditLogs() {
   const auditLogs = useAppStore((state) => state.auditLogs);
@@ -85,7 +86,9 @@ export default function AuditLogs() {
                 <div key={log.id} className="p-4 space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-bold text-slate-900 text-sm">{log.adminNama}</span>
-                    <span className="text-[11px] text-slate-400 font-mono">{log.timestamp}</span>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {formatDateTimeWIB(log.createdAt || log.timestamp)}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     {getActionBadge(log.action)}
@@ -116,7 +119,7 @@ export default function AuditLogs() {
                   {filteredLogs.map((log) => (
                     <tr key={log.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="px-5 py-3.5 whitespace-nowrap text-slate-500 font-mono text-xs">
-                        {log.timestamp}
+                        {formatDateTimeWIB(log.createdAt || log.timestamp)}
                       </td>
                       <td className="px-5 py-3.5 font-bold text-slate-900 whitespace-nowrap">
                         {log.adminNama}

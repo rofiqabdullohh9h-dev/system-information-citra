@@ -34,22 +34,6 @@ export const checkAndSeedDatabase = async () => {
         console.log('✅ Akun utama pengembang (@rofiq) berhasil diinisialisasi ke Supabase.');
       }
     }
-
-    // 2. Cek tabel Category
-    const { data: cats, error: catErr } = await supabase.from('Category').select('id').limit(1);
-    if (!catErr && (!cats || cats.length === 0)) {
-      console.log('🌱 Database Category masih kosong. Menginisialisasi kategori pengajian master...');
-      const { error: seedCatErr } = await supabase.from('Category').insert([
-        { id: 1, nama_kategori: 'Umum', deskripsi: 'Semua kelompok & jenjang usia jamaah' },
-        { id: 2, nama_kategori: 'Dewasa', deskripsi: 'Kelompok usia dewasa' },
-        { id: 3, nama_kategori: 'Lansia', deskripsi: 'Kelompok usia lanjut' },
-        { id: 4, nama_kategori: 'Remaja & Muda-Mudi', deskripsi: 'Kelompok generasi muda / milenial' },
-        { id: 5, nama_kategori: 'Anak-anak (Cabe Rawit)', deskripsi: 'Kelompok anak-anak & pembinaan dini' }
-      ]);
-      if (!seedCatErr) {
-        console.log('✅ Kategori master pengajian berhasil diinisialisasi ke Supabase.');
-      }
-    }
   } catch (err) {
     // Non-blocking background check
   }

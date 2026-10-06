@@ -15,19 +15,22 @@ console.log('📡 1. Menjalankan Backend Express di port 5000...');
 console.log('💻 2. Menjalankan Frontend Vite di port 5173...');
 console.log('==================================================\n');
 
-// 1. Jalankan Backend (port 5000)
-const backend = spawn('node', ['backend/src/server.js'], {
+// 1. Jalankan Backend (port 5000) dengan fitur auto-reload saat file backend berubah
+const backend = spawn('node', ['--watch', 'backend/src/server.js'], {
   cwd: rootDir,
   stdio: 'inherit',
   shell: true,
 });
 
-// 2. Jalankan Frontend (Vite)
-const frontend = spawn(npmCmd, ['run', 'dev', '--prefix', 'frontend'], {
-  cwd: rootDir,
-  stdio: 'inherit',
-  shell: true,
-});
+// 2. Berikan jeda 800ms agar server Express port 5000 sudah siap menerima proxy sebelum Frontend Vite aktif
+let frontend = null;
+setTimeout(() => {
+  frontend = spawn(npmCmd, ['run', 'dev', '--prefix', 'frontend'], {
+    cwd: rootDir,
+    stdio: 'inherit',
+    shell: true,
+  });
+}, 800);
 
 const cleanup = () => {
   console.log('\n🛑 Menghentikan server backend dan frontend...');

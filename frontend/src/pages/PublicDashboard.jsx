@@ -8,6 +8,7 @@ import {
 import { useAppStore } from '../store/store';
 import EventCard from '../components/display/EventCard';
 import PublicEventDetail from './PublicEventDetail';
+import { generateBulletinShareText } from '../utils/shareUtils';
 
 export default function PublicDashboard({ activeTab, setActiveTab }) {
   const events = useAppStore((state) => state.events);
@@ -446,7 +447,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
                               })}
                             </span>
                             <span>•</span>
-                            <span className="line-clamp-1">{b.penulis || 'Pengurus Majelis'}</span>
+                            <span className="line-clamp-1">{b.penulis || 'Pengurus'}</span>
                           </div>
 
                           <h3 className="text-base font-bold text-slate-900 group-hover:text-brand-700 transition-colors line-clamp-2 leading-snug">
@@ -524,7 +525,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
                   </div>
 
                   <p className="text-xs text-slate-500 mb-4 line-clamp-1">
-                    {cat.deskripsi || 'Kelompok majelis jamaah terdaftar'}
+                    {cat.deskripsi || 'Kelompok kategori jamaah terdaftar'}
                   </p>
 
                   {/* Progress bar */}
@@ -684,7 +685,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
 
                 <div className="flex items-center gap-3 text-xs text-slate-500 border-b border-slate-100 pb-3">
                   <span className="font-semibold text-slate-700">
-                    Oleh: {selectedBulletinForModal.penulis || 'Pengurus Majelis'}
+                    Oleh: {selectedBulletinForModal.penulis || 'Pengurus'}
                   </span>
                   <span>•</span>
                   <span>
@@ -731,7 +732,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
               <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                 <button
                   onClick={() => {
-                    const shareText = `${selectedBulletinForModal.judul}\n\n${selectedBulletinForModal.konten}\n\n— Portal SIAP Ormas`;
+                    const shareText = generateBulletinShareText(selectedBulletinForModal);
                     navigator.clipboard.writeText(shareText);
                     setCopiedLink(true);
                     setTimeout(() => setCopiedLink(false), 2000);

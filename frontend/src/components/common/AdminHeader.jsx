@@ -135,13 +135,14 @@ export default function AdminHeader({ currentSection, setMobileOpen, onQuickActi
                 Apakah Anda ingin mengosongkan seluruh data uji coba?
               </p>
               <ul className="space-y-1 list-disc pl-4 text-slate-600">
+                <li>Seluruh kategori jamaah akan dikosongkan.</li>
                 <li>Seluruh jadwal pengajian / event akan dikosongkan.</li>
                 <li>Seluruh data induk jamaah akan dikosongkan.</li>
                 <li>Seluruh rekapan presensi kehadiran akan dihapus.</li>
                 <li>Catatan log aktivitas (audit) akan dibersihkan.</li>
               </ul>
               <div className="pt-2 text-emerald-800 font-semibold border-t border-slate-200/60">
-                ✓ Akun Pengurus dan 5 Kategori Master tetap dipertahankan.
+                ✓ Akun Pengurus 100% aman dan tidak akan dihapus.
               </div>
             </div>
 

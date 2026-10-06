@@ -13,9 +13,11 @@ import {
   X,
   CheckCircle2,
   Calendar,
-  User
+  User,
+  Share2
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
+import { generateBulletinShareText } from '../utils/shareUtils';
 
 export default function BulletinManager() {
   const bulletins = useAppStore((state) => state.bulletins || []);
@@ -198,7 +200,7 @@ export default function BulletinManager() {
               <Megaphone className="w-5 h-5" />
             </span>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Pengumuman & Warta Berita Ormas</h2>
+              <h2 className="text-lg font-bold text-slate-900">Pengumuman & Warta Berita</h2>
             </div>
           </div>
         </div>
@@ -351,6 +353,18 @@ export default function BulletinManager() {
 
                     <div className="flex items-center gap-1.5">
                       <button
+                        onClick={() => {
+                          const text = generateBulletinShareText(item);
+                          navigator.clipboard.writeText(text);
+                          setToastMessage('Teks pengumuman berhasil disalin!');
+                          setTimeout(() => setToastMessage(null), 2500);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                        title="Salin Teks Warta / Pengumuman"
+                      >
+                        <Share2 className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => handleOpenEdit(item)}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-brand-700 hover:bg-brand-50 transition-colors"
                         title="Edit Warta"
@@ -394,7 +408,7 @@ export default function BulletinManager() {
           <Megaphone className="w-10 h-10 text-slate-300 mx-auto" />
           <h3 className="font-bold text-slate-700 text-base">Belum Ada Pengumuman atau Warta</h3>
           <p className="text-xs text-slate-400 max-w-md mx-auto">
-            Gunakan tombol di atas untuk menerbitkan maklumat penting atau dokumentasi kegiatan ormas yang telah dilaksanakan.
+            Gunakan tombol di atas untuk menerbitkan maklumat penting atau dokumentasi kegiatan yang telah dilaksanakan.
           </p>
         </div>
       )}

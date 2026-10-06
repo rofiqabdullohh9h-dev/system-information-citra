@@ -64,7 +64,7 @@ export const createCategory = async (req, res, next) => {
       adminNama: req.user.nama,
       action: 'CREATE_CATEGORY',
       target: newCategory.nama_kategori,
-      details: `Pengurus ${req.user.nama} membuat kategori majelis baru`,
+      details: `Pengurus ${req.user.nama} membuat kategori baru "${newCategory.nama_kategori}"`,
     });
 
     res.status(201).json({
@@ -105,7 +105,7 @@ export const updateCategory = async (req, res, next) => {
       adminNama: req.user.nama,
       action: 'UPDATE_CATEGORY',
       target: updated.nama_kategori,
-      details: `Pengurus ${req.user.nama} memperbarui kategori majelis`,
+      details: `Pengurus ${req.user.nama} memperbarui kategori "${updated.nama_kategori}"`,
     });
 
     res.status(200).json({
@@ -135,6 +135,10 @@ export const deleteCategory = async (req, res, next) => {
       });
     }
 
+    // Bersihkan relasi di tabel perantara (junction tables) jika ada
+    await supabase.from('JamaahCategory').delete().eq('categoryId', categoryId);
+    await supabase.from('EventCategory').delete().eq('categoryId', categoryId);
+
     const { error: delError } = await supabase
       .from('Category')
       .delete()
@@ -147,7 +151,7 @@ export const deleteCategory = async (req, res, next) => {
       adminNama: req.user.nama,
       action: 'DELETE_CATEGORY',
       target: category.nama_kategori,
-      details: `Pengurus ${req.user.nama} menghapus kategori majelis`,
+      details: `Pengurus ${req.user.nama} menghapus kategori "${category.nama_kategori}"`,
     });
 
     res.status(200).json({
