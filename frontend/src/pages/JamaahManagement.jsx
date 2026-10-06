@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Users,
   Plus,
@@ -10,9 +10,122 @@ import {
   CheckCircle,
   Upload,
   Download,
-  AlertCircle
+  AlertCircle,
+  FileUp,
+  FileText,
+  Check,
+  RefreshCw
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { useAppStore } from '../store/store';
+
+// Helper pemroses baris data (dari file Excel/CSV atau paste teks)
+function parseRowsToJamaah(rows, categoriesList = []) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const catMap = new Map();
+  categoriesList.forEach((c) => {
+    catMap.set(c.nama_kategori.toLowerCase().trim(), c.id);
+  });
+
+  const results = [];
+
+  for (const row of rows) {
+    let nama = '';
+    let wa = '';
+    let gender = 'L';
+    let catNames = '';
+
+    if (Array.isArray(row)) {
+      if (row.length === 0) continue;
+      nama = String(row[0] ?? '').trim();
+      wa = String(row[1] ?? '').trim();
+      gender = String(row[2] ?? '').trim();
+      catNames = String(row[3] ?? '').trim();
+    } else if (typeof row === 'object' && row !== null) {
+      let matchedByKey = false;
+      for (const key of Object.keys(row)) {
+        const k = key.toLowerCase().trim();
+        const val = String(row[key] ?? '').trim();
+        if (k.includes('nama') || k === 'name' || k === 'full name') {
+          nama = val;
+          matchedByKey = true;
+        } else if (k.includes('wa') || k.includes('whatsapp') || k.includes('hp') || k.includes('telepon') || k.includes('phone')) {
+          wa = val;
+          matchedByKey = true;
+        } else if (k.includes('kelamin') || k === 'gender' || k === 'jk' || k === 'sex') {
+          gender = val;
+          matchedByKey = true;
+        } else if (k.includes('kategori') || k === 'category' || k === 'kelompok') {
+          catNames = val;
+          matchedByKey = true;
+        }
+      }
+
+      // Fallback jika header tidak terdeteksi (misal format kolom tanpa label standar)
+      if (!matchedByKey || !nama) {
+        const vals = Object.values(row).map((v) => String(v ?? '').trim());
+        if (vals.length > 0 && vals[0]) nama = vals[0];
+        if (vals.length > 1 && vals[1]) wa = vals[1];
+        if (vals.length > 2 && vals[2]) gender = vals[2];
+        if (vals.length > 3 && vals[3]) catNames = vals[3];
+      }
+    }
+
+    // Lewati baris header jika masih terbawa
+    const lowerNama = nama.toLowerCase();
+    if (
+      !nama ||
+      lowerNama === 'nama' ||
+      lowerNama === 'nama lengkap' ||
+      lowerNama === 'nama jamaah' ||
+      lowerNama === 'name' ||
+      lowerNama === 'full name'
+    ) {
+      continue;
+    }
+
+    // Normalisasi nomor whatsapp (hanya angka dan tanda +)
+    let cleanWa = wa.replace(/[^0-9+]/g, '');
+    // Jika format Excel menghilangkan angka 0 di depan (contoh 81234567890)
+    if (cleanWa.startsWith('8') && cleanWa.length >= 9 && cleanWa.length <= 13) {
+      cleanWa = '0' + cleanWa;
+    } else if (cleanWa.startsWith('628')) {
+      cleanWa = '0' + cleanWa.slice(2);
+    }
+
+    // Normalisasi gender
+    const gLower = gender.toLowerCase();
+    const normGender = (gLower.startsWith('p') || gLower.includes('wanita') || gLower.includes('perempuan') || gLower.includes('akhwat') || gLower.includes('f')) ? 'P' : 'L';
+
+    // Normalisasi kategori (jamaah hanya memiliki 1 kategori)
+    const resolvedCatIds = [];
+    if (catNames) {
+      const parts = catNames.split(/[,;]/).map((s) => s.toLowerCase().trim());
+      for (const p of parts) {
+        if (catMap.has(p)) {
+          resolvedCatIds.push(catMap.get(p));
+          break; // Cukup 1 kategori saja
+        }
+      }
+    }
+
+    const primaryCatId = resolvedCatIds.length > 0
+      ? resolvedCatIds[0]
+      : (categoriesList.length > 0 ? categoriesList[0].id : null);
+
+    results.push({
+      nama,
+      no_whatsapp: cleanWa,
+      jenis_kelamin: normGender,
+      kategori: (primaryCatId ? categoriesList.find((c) => c.id === primaryCatId)?.nama_kategori : null) || catNames || '-',
+      categoryId: primaryCatId,
+      categoryIds: primaryCatId ? [primaryCatId] : [],
+    });
+  }
+
+  return results;
+}
 
 export default function JamaahManagement() {
   const jamaahList = useAppStore((state) => state.jamaah);
@@ -35,18 +148,22 @@ export default function JamaahManagement() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
-  // Form state
+  // Form state (1 Kategori per jamaah)
   const [formData, setFormData] = useState({
     nama: '',
     no_whatsapp: '',
     jenis_kelamin: 'L',
-    categoryIds: [1],
+    categoryId: null,
   });
 
   // Bulk Import state
+  const [importTab, setImportTab] = useState('file'); // 'file' | 'paste'
+  const [selectedFileName, setSelectedFileName] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
   const [importText, setImportText] = useState('');
   const [parsedPreview, setParsedPreview] = useState([]);
   const [importError, setImportError] = useState('');
+  const fileInputRef = useRef(null);
 
   // Filtered list
   const filteredJamaah = useMemo(() => {
@@ -65,28 +182,21 @@ export default function JamaahManagement() {
       nama: '',
       no_whatsapp: '',
       jenis_kelamin: 'L',
-      categoryIds: [1],
+      categoryId: categories.length > 0 ? categories[0].id : null,
     });
     setModalOpen(true);
   };
 
   const openEditModal = (person) => {
     setEditingJamaah(person);
+    const catId = person.categoryIds?.[0] || person.categories?.[0]?.id || (categories.length > 0 ? categories[0].id : null);
     setFormData({
       nama: person.nama,
       no_whatsapp: person.no_whatsapp || '',
       jenis_kelamin: person.jenis_kelamin || 'L',
-      categoryIds: person.categoryIds || [1],
+      categoryId: catId,
     });
     setModalOpen(true);
-  };
-
-  const toggleCategory = (catId) => {
-    setFormData(prev => {
-      const exists = prev.categoryIds.includes(catId);
-      const updated = exists ? prev.categoryIds.filter(id => id !== catId) : [...prev.categoryIds, catId];
-      return { ...prev, categoryIds: updated.length ? updated : [1] };
-    });
   };
 
   const handleSubmit = async (e) => {
@@ -96,11 +206,19 @@ export default function JamaahManagement() {
 
     setIsSubmitting(true);
     try {
+      const payload = {
+        nama: formData.nama.trim(),
+        no_whatsapp: formData.no_whatsapp.trim(),
+        jenis_kelamin: formData.jenis_kelamin,
+        categoryId: formData.categoryId,
+        categoryIds: formData.categoryId ? [formData.categoryId] : [],
+      };
+
       if (editingJamaah) {
-        await updateJamaah(editingJamaah.id, formData);
+        await updateJamaah(editingJamaah.id, payload);
         showToast('Data jamaah berhasil diperbarui.');
       } else {
-        await addJamaah(formData);
+        await addJamaah(payload);
         showToast('Jamaah baru berhasil ditambahkan.');
       }
       setModalOpen(false);
@@ -122,64 +240,158 @@ export default function JamaahManagement() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // CSV Export
-  const handleExportCSV = () => {
-    const headers = ['Nama', 'No WhatsApp', 'Jenis Kelamin', 'Kategori'];
-    const rows = filteredJamaah.map(j => {
-      const cats = (j.categoryIds || []).map(cid => categories.find(c => c.id === cid)?.nama_kategori).filter(Boolean).join('; ');
-      return `"${j.nama}","${j.no_whatsapp || ''}","${j.jenis_kelamin}","${cats}"`;
-    });
+  // Unduh Template Excel / CSV
+  const handleDownloadTemplate = (format = 'xlsx') => {
+    const sampleData = [
+      {
+        'Nama Lengkap': 'Ahmad Fauzi',
+        'Nomor WhatsApp': '081234567890',
+        'Jenis Kelamin': 'L',
+        'Kategori': categories[0]?.nama_kategori || '',
+      },
+      {
+        'Nama Lengkap': 'Siti Aisyah',
+        'Nomor WhatsApp': '081398765432',
+        'Jenis Kelamin': 'P',
+        'Kategori': categories[0]?.nama_kategori || '',
+      },
+      {
+        'Nama Lengkap': 'Budi Santoso',
+        'Nomor WhatsApp': '082198765432',
+        'Jenis Kelamin': 'L',
+        'Kategori': categories[0]?.nama_kategori || '',
+      },
+      {
+        'Nama Lengkap': 'Dewi Lestari',
+        'Nomor WhatsApp': '085212345678',
+        'Jenis Kelamin': 'P',
+        'Kategori': categories[0]?.nama_kategori || '',
+      },
+    ];
 
-    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Data_Jamaah_SIAP_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('File CSV berhasil diunduh.');
+    if (format === 'xlsx') {
+      const ws = XLSX.utils.json_to_sheet(sampleData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Template Jamaah');
+      XLSX.writeFile(wb, 'Template_Data_Jamaah_SIAP.xlsx');
+      showToast('Template Excel (.xlsx) berhasil diunduh.');
+    } else {
+      const ws = XLSX.utils.json_to_sheet(sampleData);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'Template_Data_Jamaah_SIAP.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('Template CSV berhasil diunduh.');
+    }
   };
 
-  // Parsing CSV text input
-  const handleParseImport = () => {
-    setImportError('');
-    if (!importText.trim()) {
-      setImportError('Harap tempel (paste) data CSV terlebih dahulu.');
+  // Ekspor Data Jamaah (Excel & CSV)
+  const handleExportData = (format = 'xlsx') => {
+    if (filteredJamaah.length === 0) {
+      showToast('Tidak ada data jamaah untuk diekspor.');
       return;
     }
 
+    const exportRows = filteredJamaah.map((j) => {
+      const cats = (j.categoryIds || [])
+        .map((cid) => categories.find((c) => c.id === cid)?.nama_kategori)
+        .filter(Boolean)
+        .join(', ');
+
+      return {
+        'Nama Lengkap': j.nama,
+        'Nomor WhatsApp': j.no_whatsapp || '',
+        'Jenis Kelamin': j.jenis_kelamin === 'P' ? 'Perempuan' : 'Laki-laki',
+        'Kategori': cats || '-',
+      };
+    });
+
+    const dateStr = new Date().toISOString().split('T')[0];
+    if (format === 'xlsx') {
+      const ws = XLSX.utils.json_to_sheet(exportRows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Data Jamaah');
+      XLSX.writeFile(wb, `Data_Jamaah_SIAP_${dateStr}.xlsx`);
+      showToast('File Excel (.xlsx) berhasil diunduh.');
+    } else {
+      const ws = XLSX.utils.json_to_sheet(exportRows);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Data_Jamaah_SIAP_${dateStr}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('File CSV berhasil diunduh.');
+    }
+  };
+
+  // Proses upload file Excel / CSV
+  const handleFileUpload = async (file) => {
+    if (!file) return;
+    setImportError('');
+    setSelectedFileName(file.name);
+
     try {
-      const lines = importText.trim().split('\n');
-      const parsed = [];
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) {
+        setImportError('File Excel tidak memiliki lembar kerja (worksheet).');
+        return;
+      }
+      const worksheet = workbook.Sheets[firstSheetName];
+      const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
-      lines.forEach((line, idx) => {
-        // Skip header if contains 'nama'
-        if (idx === 0 && line.toLowerCase().includes('nama')) return;
-
-        const parts = line.split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
-        if (parts.length >= 1 && parts[0]) {
-          const nama = parts[0];
-          const noWa = parts[1] || '';
-          const gender = (parts[2] && parts[2].toUpperCase().startsWith('P')) ? 'P' : 'L';
-          
-          parsed.push({
-            nama,
-            no_whatsapp: noWa,
-            jenis_kelamin: gender,
-            categoryIds: [1], // Default umum
-          });
-        }
-      });
-
+      const parsed = parseRowsToJamaah(rawRows, categories);
       if (parsed.length === 0) {
-        setImportError('Tidak ada data valid yang dapat diproses dari CSV.');
+        setImportError('Tidak ditemukan data jamaah yang valid pada file ini. Pastikan ada kolom Nama Lengkap.');
+        setParsedPreview([]);
         return;
       }
 
       setParsedPreview(parsed);
     } catch (err) {
-      setImportError('Gagal memproses format CSV. Pastikan format pemisah adalah koma (,).');
+      console.error('Gagal membaca file:', err);
+      setImportError('Gagal membaca file Excel/CSV. Pastikan format file tidak rusak.');
+      setParsedPreview([]);
+    }
+  };
+
+  // Proses parsing input teks manual
+  const handleParseImport = () => {
+    setImportError('');
+    if (!importText.trim()) {
+      setImportError('Harap tempel (paste) data teks terlebih dahulu.');
+      return;
+    }
+
+    try {
+      const lines = importText.trim().split(/\r?\n/).filter((l) => l.trim().length > 0);
+      const rows = lines.map((line) => {
+        let parts = [];
+        if (line.includes('\t')) parts = line.split('\t');
+        else if (line.includes(';')) parts = line.split(';');
+        else parts = line.split(',');
+        return parts.map((s) => s.trim().replace(/^["']|["']$/g, ''));
+      });
+
+      const parsed = parseRowsToJamaah(rows, categories);
+      if (parsed.length === 0) {
+        setImportError('Tidak ada data valid yang dapat diproses dari teks ini.');
+        return;
+      }
+
+      setParsedPreview(parsed);
+    } catch (err) {
+      setImportError('Gagal memproses data teks. Pastikan format kolom sesuai.');
     }
   };
 
@@ -190,6 +402,7 @@ export default function JamaahManagement() {
       await bulkImportJamaah(parsedPreview);
       setImportModalOpen(false);
       setImportText('');
+      setSelectedFileName('');
       setParsedPreview([]);
       showToast(`Berhasil mengimpor ${parsedPreview.length} data jamaah.`);
     } catch (err) {
@@ -220,19 +433,27 @@ export default function JamaahManagement() {
 
         <div className="flex flex-wrap items-center gap-2.5">
           <button
-            onClick={() => setImportModalOpen(true)}
+            onClick={() => {
+              setImportModalOpen(true);
+              setImportTab('file');
+              setImportError('');
+              setParsedPreview([]);
+              setSelectedFileName('');
+              setImportText('');
+            }}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors border border-slate-200"
           >
             <Upload className="w-4 h-4 text-brand-700" />
-            <span>Impor CSV / Excel</span>
+            <span>Impor Excel / CSV</span>
           </button>
 
           <button
-            onClick={handleExportCSV}
+            onClick={() => handleExportData('xlsx')}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors border border-slate-200"
+            title="Ekspor ke Excel (.xlsx)"
           >
             <Download className="w-4 h-4 text-emerald-600" />
-            <span>Ekspor Data</span>
+            <span>Ekspor Excel</span>
           </button>
 
           <button
@@ -266,8 +487,8 @@ export default function JamaahManagement() {
             className="px-3 py-2 text-xs font-semibold bg-slate-50 rounded-xl border border-slate-200 text-slate-700 focus:outline-none cursor-pointer"
           >
             <option value="ALL">Semua Gender</option>
-            <option value="L">Laki-laki (Ikhwan)</option>
-            <option value="P">Perempuan (Akhwat)</option>
+            <option value="L">Laki-laki</option>
+            <option value="P">Perempuan</option>
           </select>
 
           {/* Category Filter */}
@@ -318,7 +539,7 @@ export default function JamaahManagement() {
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
                         person.jenis_kelamin === 'L' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-pink-50 text-pink-700 border border-pink-200'
                       }`}>
-                        {person.jenis_kelamin === 'L' ? 'Ikhwan (L)' : 'Akhwat (P)'}
+                        {person.jenis_kelamin === 'L' ? 'Laki-laki (L)' : 'Perempuan (P)'}
                       </span>
                     </div>
 
@@ -388,17 +609,17 @@ export default function JamaahManagement() {
                           <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                             person.jenis_kelamin === 'L' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-pink-50 text-pink-700 border border-pink-200'
                           }`}>
-                            {person.jenis_kelamin === 'L' ? 'Ikhwan (L)' : 'Akhwat (P)'}
+                            {person.jenis_kelamin === 'L' ? 'Laki-laki (L)' : 'Perempuan (P)'}
                           </span>
                         </td>
                         <td className="px-5 py-3.5">
-                          <div className="flex flex-wrap gap-1">
-                            {personCats.map((catName, cIdx) => (
-                              <span key={cIdx} className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                                {catName}
-                              </span>
-                            ))}
-                          </div>
+                          {personCats.length > 0 ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-block">
+                              {personCats[0]}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">-</span>
+                          )}
                         </td>
                         <td className="px-5 py-3.5 text-right">
                           <div className="flex items-center justify-end gap-1.5">
@@ -455,7 +676,7 @@ export default function JamaahManagement() {
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: H. Ahmad Zaki"
+                  placeholder="Contoh: Muhammad Rizky Pratama"
                   value={formData.nama}
                   onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
                   className="w-full px-3 py-2 text-sm bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
@@ -487,7 +708,7 @@ export default function JamaahManagement() {
                       formData.jenis_kelamin === 'L' ? 'bg-blue-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
-                    Laki-laki (Ikhwan)
+                    Laki-laki
                   </button>
                   <button
                     type="button"
@@ -496,28 +717,31 @@ export default function JamaahManagement() {
                       formData.jenis_kelamin === 'P' ? 'bg-pink-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
-                    Perempuan (Akhwat)
+                    Perempuan
                   </button>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
-                  Pilih Kategori (Bisa Multi-Select)
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+                  Kategori Jamaah (Pilih 1 Kategori) *
                 </label>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {categories.map((cat) => {
-                    const isSelected = formData.categoryIds.includes(cat.id);
+                    const isSelected = formData.categoryId === cat.id;
                     return (
                       <button
                         type="button"
                         key={cat.id}
-                        onClick={() => toggleCategory(cat.id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                          isSelected ? 'bg-brand-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        onClick={() => setFormData({ ...formData, categoryId: cat.id })}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-brand-700 border-brand-800 text-white shadow-xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                         }`}
                       >
-                        {cat.nama_kategori}
+                        {isSelected && <Check className="w-3.5 h-3.5" />}
+                        <span>{cat.nama_kategori}</span>
                       </button>
                     );
                   })}
@@ -553,99 +777,288 @@ export default function JamaahManagement() {
         </div>
       )}
 
-      {/* Bulk CSV Import Modal */}
+      {/* Bulk Excel / CSV Import Modal */}
       {importModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-xl w-full space-y-4 shadow-floating border border-slate-200">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-                Impor Data Jamaah (CSV)
-              </h3>
-              <button onClick={() => setImportModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full space-y-4 shadow-floating border border-slate-200 my-8 max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div>
+                <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                  Impor Data Jamaah (Excel & CSV)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Unggah file spreadsheet atau tempel data teks untuk memasukkan jamaah secara massal.
+                </p>
+              </div>
+              <button 
+                onClick={() => setImportModalOpen(false)} 
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-xs text-emerald-900 space-y-1">
-              <span className="font-bold block">Format CSV yang didukung:</span>
-              <p className="font-mono text-[11px] text-slate-700 bg-white p-2 rounded border border-emerald-200">
-                Nama, No WhatsApp, Jenis Kelamin (L/P)<br/>
-                Contoh:<br/>
-                Ustadz Abdullah, 081234567890, L<br/>
-                Ustadzah Khadijah, 081398765432, P
-              </p>
-            </div>
-
-            {importError && (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-                <span>{importError}</span>
+            {/* Template Download & Info Bar */}
+            <div className="bg-emerald-50/70 border border-emerald-100 p-3.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+              <div className="text-xs text-emerald-900">
+                <p className="font-bold">Belum punya format file yang sesuai?</p>
+                <p className="text-emerald-700 text-[11px] mt-0.5">
+                  Unduh template berikut untuk memudahkan pengisian data:
+                </p>
               </div>
-            )}
-
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
-                Tempel (Paste) Teks CSV:
-              </label>
-              <textarea
-                rows={5}
-                placeholder="Tempel baris data CSV di sini..."
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-                className="w-full p-3 font-mono text-xs bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-              />
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadTemplate('xlsx')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Template Excel (.xlsx)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadTemplate('csv')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Template CSV</span>
+                </button>
+              </div>
             </div>
 
-            {parsedPreview.length > 0 && (
-              <div className="space-y-2">
-                <span className="text-xs font-bold text-emerald-700 block">
-                  Pratinjau ({parsedPreview.length} data siap diimpor):
-                </span>
-                <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-xl p-2 text-xs space-y-1">
-                  {parsedPreview.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between py-1 px-2 bg-slate-50 rounded">
-                      <span className="font-semibold text-slate-800">{item.nama}</span>
-                      <span className="text-slate-500 font-mono text-[11px]">{item.no_whatsapp} ({item.jenis_kelamin})</span>
-                    </div>
-                  ))}
+            {/* Tab Selector */}
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setImportTab('file')}
+                className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                  importTab === 'file'
+                    ? 'bg-brand-50 text-brand-700 border border-brand-200 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                }`}
+              >
+                <FileUp className="w-3.5 h-3.5" />
+                <span>Unggah File Spreadsheet</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setImportTab('paste')}
+                className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                  importTab === 'paste'
+                    ? 'bg-brand-50 text-brand-700 border border-brand-200 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Tempel Teks (Paste)</span>
+              </button>
+            </div>
+
+            {/* Scrollable Content Body */}
+            <div className="space-y-4 overflow-y-auto flex-1 pr-1">
+              {importError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{importError}</span>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              {/* Tab 1: File Upload */}
+              {importTab === 'file' && (
+                <div className="space-y-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".xlsx, .xls, .csv"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleFileUpload(e.target.files[0]);
+                      }
+                    }}
+                  />
+
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragging(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                        handleFileUpload(e.dataTransfer.files[0]);
+                      }
+                    }}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all ${
+                      isDragging
+                        ? 'border-brand-500 bg-brand-50/50 scale-[0.99]'
+                        : 'border-slate-200 hover:border-brand-300 hover:bg-slate-50/70 bg-slate-50/30'
+                    }`}
+                  >
+                    <div className="w-12 h-12 mx-auto rounded-2xl bg-brand-50 flex items-center justify-center text-brand-600 mb-3 shadow-xs">
+                      <FileSpreadsheet className="w-6 h-6" />
+                    </div>
+                    {selectedFileName ? (
+                      <div>
+                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-bold mb-1">
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>File Terpilih: {selectedFileName}</span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Klik untuk memilih file lain atau ganti file.
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">
+                          Tarik & lepas file Excel (.xlsx, .xls) atau CSV (.csv) ke sini
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          atau <span className="text-brand-700 font-semibold underline underline-offset-2">klik untuk telusuri file</span> dari komputer Anda
+                        </p>
+                      </div>
+                    )}
+                    <p className="text-[11px] text-slate-400 mt-3">
+                      Kolom otomatis terdeteksi: <strong>Nama Lengkap</strong>, <strong>Nomor WhatsApp</strong>, <strong>Jenis Kelamin (L/P)</strong>, <strong>Kategori</strong>
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 2: Text Paste */}
+              {importTab === 'paste' && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5">
+                    <span className="font-bold text-slate-800 block">Format teks yang didukung (Koma, Titik Koma, atau Tab):</span>
+                    <div className="font-mono text-[11px] text-slate-700 bg-white p-2.5 rounded-lg border border-slate-200 space-y-0.5">
+                      <p className="text-slate-400 font-semibold mb-1">Nama Lengkap, Nomor WhatsApp, Jenis Kelamin (L/P), Kategori</p>
+                      <p>Muhammad Rizky Pratama, 081234567890, L</p>
+                      <p>Siti Aisyah, 081398765432, P</p>
+                      <p>Budi Santoso, 082198765432, L</p>
+                      <p>Dewi Lestari, 085212345678, P</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                      Tempel (Paste) Teks:
+                    </label>
+                    <textarea
+                      rows={5}
+                      placeholder={`Contoh:\nMuhammad Rizky Pratama, 081234567890, L\nSiti Aisyah, 081398765432, P`}
+                      value={importText}
+                      onChange={(e) => setImportText(e.target.value)}
+                      className="w-full p-3 font-mono text-xs bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                    />
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleParseImport}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-colors shadow-xs"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Proses Teks & Pratinjau</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Preview Table of Parsed Data */}
+              {parsedPreview.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      Pratinjau Data ({parsedPreview.length} jamaah siap diimpor):
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setParsedPreview([]);
+                        setSelectedFileName('');
+                        setImportText('');
+                      }}
+                      className="text-[11px] text-slate-400 hover:text-rose-600 transition-colors"
+                    >
+                      Bersihkan Pratinjau
+                    </button>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold sticky top-0">
+                        <tr>
+                          <th className="py-2 px-3 w-10 text-center">#</th>
+                          <th className="py-2 px-3">Nama Lengkap</th>
+                          <th className="py-2 px-3">No. WhatsApp</th>
+                          <th className="py-2 px-3 text-center">Gender</th>
+                          <th className="py-2 px-3">Kategori</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {parsedPreview.map((item, i) => (
+                          <tr key={i} className="hover:bg-slate-50/50">
+                            <td className="py-1.5 px-3 text-center text-slate-400 font-mono text-[11px]">{i + 1}</td>
+                            <td className="py-1.5 px-3 font-semibold text-slate-900">{item.nama}</td>
+                            <td className="py-1.5 px-3 font-mono text-[11px] text-slate-600">{item.no_whatsapp || '-'}</td>
+                            <td className="py-1.5 px-3 text-center">
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  item.jenis_kelamin === 'P'
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                }`}
+                              >
+                                {item.jenis_kelamin === 'P' ? 'P' : 'L'}
+                              </span>
+                            </td>
+                            <td className="py-1.5 px-3 text-slate-500 text-[11px]">{item.kategori || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 shrink-0">
               <button
                 type="button"
                 onClick={() => setImportModalOpen(false)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
               >
-                Tutup
+                Batal
               </button>
-              {parsedPreview.length === 0 ? (
-                <button
-                  type="button"
-                  onClick={handleParseImport}
-                  className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-colors"
-                >
-                  Cek & Pratinjau
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={isImporting}
-                  onClick={handleCommitImport}
-                  className="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 disabled:opacity-50 text-white text-xs font-bold transition-colors flex items-center gap-2"
-                >
-                  {isImporting ? (
-                    <>
-                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                      <span>Mengimpor...</span>
-                    </>
-                  ) : (
-                    <span>Konfirmasi & Simpan {parsedPreview.length} Jamaah</span>
-                  )}
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={isImporting || parsedPreview.length === 0}
+                onClick={handleCommitImport}
+                className="px-5 py-2 rounded-xl bg-brand-700 hover:bg-brand-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold transition-all shadow-xs flex items-center gap-2"
+              >
+                {isImporting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    <span>Menyimpan ke Database...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Konfirmasi & Simpan {parsedPreview.length > 0 ? `(${parsedPreview.length})` : ''} Jamaah</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

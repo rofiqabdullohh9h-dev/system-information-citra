@@ -137,7 +137,7 @@ function EventCard({ event, onOpenDetail }) {
 
         {/* Description snippet */}
         <p className="text-xs sm:text-sm text-slate-600 mt-2.5 line-clamp-2 leading-relaxed">
-          {event.deskripsi || 'Jadwal kajian rutin.'}
+          {event.deskripsi || 'Jadwal pengajian rutin.'}
         </p>
 
         {/* Meta Info: Date, Time, Location */}

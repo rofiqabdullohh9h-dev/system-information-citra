@@ -75,7 +75,7 @@ const MobileAttendanceCard = React.memo(function MobileAttendanceCard({
         <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
           person.jenis_kelamin === 'L' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-pink-50 text-pink-700 border border-pink-200'
         }`}>
-          {person.jenis_kelamin === 'L' ? 'Ikhwan' : 'Akhwat'}
+          {person.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan'}
         </span>
       </div>
 
@@ -141,7 +141,7 @@ const DesktopAttendanceRow = React.memo(function DesktopAttendanceRow({
         <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
           person.jenis_kelamin === 'L' ? 'bg-blue-50 text-blue-700' : 'bg-pink-50 text-pink-700'
         }`}>
-          {person.jenis_kelamin === 'L' ? 'Ikhwan' : 'Akhwat'}
+          {person.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan'}
         </span>
       </td>
       <td className="px-5 py-3.5">
@@ -291,10 +291,18 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
     return map;
   }, [categories]);
 
-  // Auto-filter jamaah based on event target category & target gender (FR-ATTENDANCE-002)
-  const targetCategoryIds = currentEvent?.targetCategoryIds || [1];
-  const targetCategoryId = targetCategoryIds[0] || 1;
-  const isGeneralEvent = targetCategoryId === 1; // 1 = Umum
+  // Auto-filter jamaah based on event target categories & target gender
+  const targetCategoryIds = useMemo(() => {
+    return (currentEvent?.targetCategoryIds || []).map(Number);
+  }, [currentEvent]);
+
+  // Jika event menyasar semua kategori (atau tidak ditentukan batasan)
+  const isAllCategories = useMemo(() => {
+    if (!targetCategoryIds || targetCategoryIds.length === 0) return true;
+    if (categories.length > 0 && targetCategoryIds.length >= categories.length) return true;
+    return false;
+  }, [targetCategoryIds, categories]);
+
   const targetGender = currentEvent?.target_gender || currentEvent?.targetGender || 'ALL';
 
   const eligibleJamaah = useMemo(() => {
@@ -306,11 +314,12 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
       if (targetGender === 'L' && person.jenis_kelamin !== 'L') return false;
       if (targetGender === 'P' && person.jenis_kelamin !== 'P') return false;
 
-      // 2. Filter Kategori Target Acara
-      if (isGeneralEvent) return true;
-      return (person.categoryIds || []).includes(targetCategoryId);
+      // 2. Filter Kategori Target Acara (Multi-Kategori)
+      if (isAllCategories) return true;
+      const userCats = person.categoryIds || (person.categoryId ? [person.categoryId] : []);
+      return userCats.some(cid => targetCategoryIds.includes(Number(cid)));
     });
-  }, [jamaahList, currentEvent, isGeneralEvent, targetCategoryId, targetGender]);
+  }, [jamaahList, currentEvent, isAllCategories, targetCategoryIds, targetGender]);
 
   // Filter by gender tab & live search (FR-ATTENDANCE-003, 004)
   const displayedJamaah = useMemo(() => {
@@ -443,7 +452,7 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
 
           {/* Event Picker */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 w-full md:w-auto">
-            <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Pilih Kajian:</span>
+            <span className="text-xs font-semibold text-slate-500 whitespace-nowrap">Pilih Acara:</span>
             {events.length > 0 ? (
               <select
                 value={selectedEventId || ''}
@@ -588,9 +597,9 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
             <Calendar className="w-7 h-7" />
           </div>
           <div className="max-w-md mx-auto space-y-1.5">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900">Belum Ada Jadwal Kajian</h3>
+            <h3 className="text-base sm:text-lg font-bold text-slate-900">Belum Ada Jadwal Acara</h3>
             <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
-              Data absensi memerlukan jadwal kajian aktif. Silakan buat atau tambahkan jadwal kajian terlebih dahulu pada menu <strong>Jadwal Acara</strong> sebelum melakukan absensi jamaah.
+              Data absensi memerlukan jadwal acara aktif. Silakan buat atau tambahkan jadwal pengajian terlebih dahulu pada menu <strong>Jadwal Acara</strong> sebelum melakukan absensi jamaah.
             </p>
           </div>
         </div>
@@ -619,8 +628,7 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <span className="sm:hidden">Ikhwan ({eligibleJamaah.filter(j => j.jenis_kelamin === 'L').length})</span>
-                  <span className="hidden sm:inline">Laki-laki (Ikhwan) ({eligibleJamaah.filter(j => j.jenis_kelamin === 'L').length})</span>
+                  <span>Laki-laki ({eligibleJamaah.filter(j => j.jenis_kelamin === 'L').length})</span>
                 </button>
                 <button
                   onClick={() => setActiveGenderTab('P')}
@@ -630,8 +638,7 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <span className="sm:hidden">Akhwat ({eligibleJamaah.filter(j => j.jenis_kelamin === 'P').length})</span>
-                  <span className="hidden sm:inline">Perempuan (Akhwat) ({eligibleJamaah.filter(j => j.jenis_kelamin === 'P').length})</span>
+                  <span>Perempuan ({eligibleJamaah.filter(j => j.jenis_kelamin === 'P').length})</span>
                 </button>
               </div>
 

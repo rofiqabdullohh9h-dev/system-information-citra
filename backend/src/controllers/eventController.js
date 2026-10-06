@@ -149,14 +149,22 @@ export const createEvent = async (req, res, next) => {
 
     if (eventError) throw eventError;
 
-    // 2. Insert Target Categories (1 kategori sasaran yang ditentukan pengurus)
-    const catIds = targetCategoryIds && targetCategoryIds.length > 0 ? [parseInt(targetCategoryIds[0])] : [1];
-    const categoryRows = catIds.map(cid => ({
-      eventId: newEvent.id,
-      categoryId: parseInt(cid),
-    }));
+    // 2. Insert Target Categories (Mendukung Multi-Kategori)
+    let catIds = [];
+    if (Array.isArray(targetCategoryIds) && targetCategoryIds.length > 0) {
+      catIds = targetCategoryIds.map(cid => parseInt(cid)).filter(cid => !isNaN(cid) && cid > 0);
+    } else {
+      const { data: allCats } = await supabase.from('Category').select('id');
+      catIds = (allCats || []).map(c => c.id);
+    }
 
-    await supabase.from('EventCategory').insert(categoryRows);
+    if (catIds.length > 0) {
+      const categoryRows = catIds.map(cid => ({
+        eventId: newEvent.id,
+        categoryId: cid,
+      }));
+      await supabase.from('EventCategory').insert(categoryRows);
+    }
 
     // 3. Audit Log
     await logAudit({
@@ -245,14 +253,19 @@ export const updateEvent = async (req, res, next) => {
 
     if (updateError) throw updateError;
 
-    // 2. Sync Categories if supplied (1 kategori)
-    if (targetCategoryIds && Array.isArray(targetCategoryIds) && targetCategoryIds.length > 0) {
+    // 2. Sync Categories if supplied (Mendukung Multi-Kategori)
+    let updatedCatIds = undefined;
+    if (targetCategoryIds && Array.isArray(targetCategoryIds)) {
       await supabase.from('EventCategory').delete().eq('eventId', eventId);
-      const newCategoryRows = [{
-        eventId,
-        categoryId: parseInt(targetCategoryIds[0]),
-      }];
-      await supabase.from('EventCategory').insert(newCategoryRows);
+      const catIds = targetCategoryIds.map(cid => parseInt(cid)).filter(cid => !isNaN(cid) && cid > 0);
+      if (catIds.length > 0) {
+        const newCategoryRows = catIds.map(cid => ({
+          eventId,
+          categoryId: cid,
+        }));
+        await supabase.from('EventCategory').insert(newCategoryRows);
+      }
+      updatedCatIds = catIds;
     }
 
     // 3. Audit Log
@@ -271,6 +284,7 @@ export const updateEvent = async (req, res, next) => {
         ...updated,
         target_gender: selectedGender,
         deskripsi: cleanDescription(updated.deskripsi),
+        ...(updatedCatIds !== undefined && { targetCategoryIds: updatedCatIds }),
       },
     });
   } catch (error) {

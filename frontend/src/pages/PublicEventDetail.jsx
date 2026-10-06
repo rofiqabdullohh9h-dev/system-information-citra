@@ -73,7 +73,7 @@ export default function PublicEventDetail({ event, onClose, showAllAttendees = f
     let isCrossAttended = false;
 
     if (!recordedStatus) {
-      // Cek apakah hadir di kajian lain pada tanggal yang sama (Pilihan A)
+      // Cek apakah hadir di acara lain pada tanggal yang sama (Pilihan A)
       const attendedOther = eventDateStr ? safeEvents.some(oe => {
         if (!oe || oe.id === event.id) return false;
         const od = safeIsoDate(oe.tanggal);
@@ -206,7 +206,7 @@ export default function PublicEventDetail({ event, onClose, showAllAttendees = f
           {/* Description */}
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-              Deskripsi Kajian
+              Deskripsi Acara
             </h4>
             <p className="text-sm text-slate-700 leading-relaxed bg-white p-3.5 rounded-xl border border-slate-200/60">
               {event.deskripsi || 'Tidak ada deskripsi tambahan untuk acara ini.'}
@@ -314,7 +314,7 @@ export default function PublicEventDetail({ event, onClose, showAllAttendees = f
                               <td className="px-4 py-2.5 font-medium text-slate-800">{att.nama}</td>
                               <td className="px-4 py-2.5 text-slate-500 hidden sm:table-cell">
                                 <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold ${att.jenis_kelamin === 'L' ? 'bg-blue-50 text-blue-700' : 'bg-pink-50 text-pink-700'}`}>
-                                  {att.jenis_kelamin === 'L' ? 'Ikhwan (L)' : 'Akhwat (P)'}
+                                  {att.jenis_kelamin === 'L' ? 'Laki-laki (L)' : 'Perempuan (P)'}
                                 </span>
                               </td>
                               <td className="px-4 py-2.5">{getStatusBadge(att.status, att.isAutoAlpa, att.isCrossAttended)}</td>

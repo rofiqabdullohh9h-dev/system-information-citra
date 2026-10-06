@@ -182,7 +182,7 @@ export const exportAttendanceToExcel = async (req, res, next) => {
         index + 1,
         person.nama || '-',
         person.no_whatsapp || '-',
-        person.jenis_kelamin === 'L' ? 'Laki-laki (Ikhwan)' : 'Perempuan (Akhwat)',
+        person.jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan',
         cats || 'Umum',
         displayStatus,
         petugas,

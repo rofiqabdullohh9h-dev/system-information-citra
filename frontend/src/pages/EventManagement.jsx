@@ -12,7 +12,8 @@ import {
   Users,
   Clock,
   MapPin,
-  AlertTriangle
+  AlertTriangle,
+  Check
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
 import { generateEventShareText } from '../utils/shareUtils';
@@ -31,7 +32,7 @@ export default function EventManagement() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Form state
+  // Form state (Mendukung Multi-Kategori)
   const [formData, setFormData] = useState({
     tema: '',
     pembicara: '',
@@ -39,7 +40,7 @@ export default function EventManagement() {
     tanggal: new Date().toISOString().split('T')[0],
     waktu: '',
     deskripsi: '',
-    targetCategoryIds: [1], // 1 Kategori yang ditentukan pengurus
+    targetCategoryIds: [], // Multi kategori sasaran
     target_gender: 'ALL',   // 'ALL' | 'L' | 'P'
     is_published: true,
     show_attendees: false,
@@ -50,6 +51,7 @@ export default function EventManagement() {
 
   const openAddModal = () => {
     setEditingEvent(null);
+    const allCatIds = categories.map(c => c.id);
     setFormData({
       tema: '',
       pembicara: '',
@@ -57,7 +59,8 @@ export default function EventManagement() {
       tanggal: new Date().toISOString().split('T')[0],
       waktu: '',
       deskripsi: '',
-      targetCategoryIds: [categories[0]?.id || 1],
+      // Default: SEMUA KATEGORI aktif (memudahkan pengurus jika acara untuk semua jamaah)
+      targetCategoryIds: allCatIds.length > 0 ? allCatIds : [1],
       target_gender: 'ALL',
       is_published: true,
       show_attendees: false,
@@ -68,9 +71,14 @@ export default function EventManagement() {
   };
 
   const openEditModal = (event) => {
-    const catId = event.targetCategoryIds && event.targetCategoryIds.length > 0 
-      ? event.targetCategoryIds[0] 
-      : (event.targetCategories && event.targetCategories.length > 0 ? event.targetCategories[0].id : 1);
+    let catIds = [];
+    if (event.targetCategoryIds && Array.isArray(event.targetCategoryIds) && event.targetCategoryIds.length > 0) {
+      catIds = event.targetCategoryIds;
+    } else if (event.targetCategories && Array.isArray(event.targetCategories) && event.targetCategories.length > 0) {
+      catIds = event.targetCategories.map(tc => tc.categoryId || tc.id);
+    } else {
+      catIds = categories.map(c => c.id);
+    }
 
     setEditingEvent(event);
     setFormData({
@@ -80,7 +88,7 @@ export default function EventManagement() {
       tanggal: event.tanggal ? new Date(event.tanggal).toISOString().split('T')[0] : '',
       waktu: event.waktu || '',
       deskripsi: event.deskripsi || '',
-      targetCategoryIds: [catId],
+      targetCategoryIds: catIds,
       target_gender: event.target_gender || 'ALL',
       is_published: event.is_published !== undefined ? event.is_published : true,
       show_attendees: event.show_attendees || false,
@@ -97,6 +105,11 @@ export default function EventManagement() {
 
     if (!formData.tema.trim()) {
       setFormError('Tema pengajian wajib diisi.');
+      return;
+    }
+
+    if (!formData.targetCategoryIds || formData.targetCategoryIds.length === 0) {
+      setFormError('Pilih minimal 1 kategori sasaran untuk jadwal pengajian ini.');
       return;
     }
 
@@ -179,11 +192,17 @@ export default function EventManagement() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  {eventCats.map(c => (
-                    <span key={c.id} className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                      {c.nama_kategori}
+                  {categories.length > 0 && eventCats.length === categories.length ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
+                      ✨ Semua Jamaah
                     </span>
-                  ))}
+                  ) : (
+                    eventCats.map(c => (
+                      <span key={c.id} className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        {c.nama_kategori}
+                      </span>
+                    ))
+                  )}
                   {event.target_gender === 'L' && (
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
                       🧔 Pria
@@ -262,11 +281,17 @@ export default function EventManagement() {
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex flex-col gap-1 max-w-[200px]">
-                        {eventCats.map(c => (
-                          <span key={c.id} className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-block w-fit">
-                            {c.nama_kategori}
+                        {categories.length > 0 && eventCats.length === categories.length ? (
+                          <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300 inline-block w-fit">
+                            ✨ Semua Jamaah
                           </span>
-                        ))}
+                        ) : (
+                          eventCats.map(c => (
+                            <span key={c.id} className="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-block w-fit">
+                              {c.nama_kategori}
+                            </span>
+                          ))
+                        )}
                         {event.target_gender === 'L' && (
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200 inline-block w-fit">
                             🧔 Khusus Pria
@@ -384,6 +409,7 @@ export default function EventManagement() {
                   </label>
                   <input
                     type="text"
+                    placeholder="Contoh: Abdullah Nashih"
                     value={formData.pembicara}
                     onChange={(e) => setFormData({ ...formData, pembicara: e.target.value })}
                     className="w-full px-3.5 py-2 text-sm bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
@@ -395,6 +421,7 @@ export default function EventManagement() {
                   </label>
                   <input
                     type="text"
+                    placeholder="Contoh: Masjid Al-Ikhlas"
                     value={formData.lokasi}
                     onChange={(e) => setFormData({ ...formData, lokasi: e.target.value })}
                     className="w-full px-3.5 py-2 text-sm bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
@@ -429,30 +456,67 @@ export default function EventManagement() {
                 </div>
               </div>
 
-              {/* Target Kategori Acara (Pilih 1 Kategori) */}
+              {/* Target Kategori Acara (Mendukung Multi-Kategori) */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
-                  Kategori Acara (Pilih 1 Kategori) *
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600">
+                    Target Kategori Jamaah (Bisa Multi-Kategori) *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allIds = categories.map(c => c.id);
+                      const isAll = formData.targetCategoryIds.length === categories.length;
+                      setFormData({
+                        ...formData,
+                        targetCategoryIds: isAll ? [] : allIds,
+                      });
+                    }}
+                    className="text-[11px] font-bold text-brand-700 hover:text-brand-900 underline underline-offset-2"
+                  >
+                    {formData.targetCategoryIds.length === categories.length
+                      ? 'Kosongkan Pilihan'
+                      : 'Pilih Semua Kategori (Untuk Semua Jamaah)'}
+                  </button>
+                </div>
+
+                {categories.length > 0 && formData.targetCategoryIds.length === categories.length && (
+                  <div className="mb-2 p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center gap-1.5 font-medium">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Jadwal pengajian ini terbuka untuk <strong>Semua Jamaah</strong> (seluruh kategori).</span>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-2">
                   {categories.map((cat) => {
-                    const isSelected = (formData.targetCategoryIds[0] || 1) === cat.id;
+                    const isSelected = formData.targetCategoryIds.includes(cat.id);
                     return (
                       <button
                         type="button"
                         key={cat.id}
-                        onClick={() => setFormData({ ...formData, targetCategoryIds: [cat.id] })}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                        onClick={() => {
+                          const updated = isSelected
+                            ? formData.targetCategoryIds.filter(id => id !== cat.id)
+                            : [...formData.targetCategoryIds, cat.id];
+                          setFormData({ ...formData, targetCategoryIds: updated });
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border flex items-center gap-1.5 ${
                           isSelected
-                            ? 'bg-brand-700 text-white shadow-xs'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            ? 'bg-brand-700 border-brand-800 text-white shadow-xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        {cat.nama_kategori}
+                        {isSelected && <Check className="w-3.5 h-3.5" />}
+                        <span>{cat.nama_kategori}</span>
                       </button>
                     );
                   })}
                 </div>
+                {formData.targetCategoryIds.length === 0 && (
+                  <p className="text-[11px] text-rose-500 mt-1 font-medium">
+                    ⚠️ Harap pilih minimal 1 kategori sasaran untuk jadwal pengajian ini.
+                  </p>
+                )}
               </div>
 
               {/* Target Jenis Kelamin Peserta */}

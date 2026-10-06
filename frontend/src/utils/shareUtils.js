@@ -33,9 +33,9 @@ export const generateEventShareText = (event, categories = []) => {
   const targetGender = event.target_gender || event.targetGender;
   let genderLabel = '';
   if (targetGender === 'L') {
-    genderLabel = ' (Khusus Ikhwan)';
+    genderLabel = ' (Khusus Laki-laki)';
   } else if (targetGender === 'P') {
-    genderLabel = ' (Khusus Akhwat)';
+    genderLabel = ' (Khusus Perempuan)';
   }
 
   // Bersihkan deskripsi dari komentar tersembunyi

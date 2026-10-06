@@ -1,14 +1,21 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  Calendar, Search, Filter, BarChart3, Users, Clock, 
-  MapPin, BookOpen, ChevronRight, CheckCircle2, AlertCircle, 
+import {
+  Calendar, Search, Filter, BarChart3, Users, Clock,
+  MapPin, BookOpen, ChevronRight, CheckCircle2, AlertCircle,
   Megaphone, Pin, Newspaper, ExternalLink, Share2, Tag, X,
-  Check, FileText
+  Check, FileText, ArrowUpDown, RotateCcw, TrendingUp, Percent
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
 import EventCard from '../components/display/EventCard';
 import PublicEventDetail from './PublicEventDetail';
 import { generateBulletinShareText } from '../utils/shareUtils';
+import {
+  getLocalDateStr,
+  getPeriodRange,
+  isDateInPeriod,
+  INDONESIAN_MONTHS,
+  formatDateWIB
+} from '../utils/dateUtils';
 
 export default function PublicDashboard({ activeTab, setActiveTab }) {
   const events = useAppStore((state) => state.events);
@@ -28,10 +35,44 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
   const [bulletinSearch, setBulletinSearch] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Filter & Sort state untuk Tab Statistik Kehadiran
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+
+  const [statsPeriodType, setStatsPeriodType] = useState('ALL'); // 'ALL' | 'THIS_WEEK' | 'THIS_MONTH' | 'SPECIFIC_MONTH' | 'CUSTOM'
+  const [statsMonth, setStatsMonth] = useState(currentMonth);
+  const [statsYear, setStatsYear] = useState(currentYear);
+  const [statsStartDate, setStatsStartDate] = useState('');
+  const [statsEndDate, setStatsEndDate] = useState('');
+  const [statsSortOrder, setStatsSortOrder] = useState('DATE_DESC'); // 'DATE_DESC' | 'DATE_ASC' | 'RATE_DESC' | 'RATE_ASC' | 'TITLE_ASC'
+
   // Filter only published events for public portal
   const publishedEvents = useMemo(() => {
     return events.filter(e => e.is_published !== false);
   }, [events]);
+
+  // Info label rentang periode aktif di tab statistik
+  const statsPeriodInfo = useMemo(() => {
+    return getPeriodRange(statsPeriodType, {
+      startDate: statsStartDate,
+      endDate: statsEndDate,
+      month: statsMonth,
+      year: statsYear,
+    });
+  }, [statsPeriodType, statsStartDate, statsEndDate, statsMonth, statsYear]);
+
+  // Acara publik yang masuk dalam filter periode statistik
+  const statsPeriodEvents = useMemo(() => {
+    return publishedEvents.filter(e => {
+      return isDateInPeriod(e.tanggal, statsPeriodType, {
+        startDate: statsStartDate,
+        endDate: statsEndDate,
+        month: statsMonth,
+        year: statsYear,
+      });
+    });
+  }, [publishedEvents, statsPeriodType, statsStartDate, statsEndDate, statsMonth, statsYear]);
 
   // Filtered events based on search & category
   const filteredEvents = useMemo(() => {
@@ -55,27 +96,62 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
   // Find the next upcoming event for Hero spotlight
   const nextEvent = publishedEvents[0];
 
-  // Category statistics calculation (only computed deeply when on the statistik tab)
+  // Category statistics calculation (dihitung dinamis sesuai periode yang dipilih, diawali kartu Keseluruhan)
   const categoryStats = useMemo(() => {
+    const totalActiveMembers = jamaahList.filter(j => j.isActive).length;
+
+    // Hitung akumulasi kehadiran seluruh kategori pada acara dalam rentang periode terpilih
+    let allHadirCount = 0;
+    let allTotalAssigned = 0;
+
+    statsPeriodEvents.forEach(ev => {
+      const eventAtt = attendance[ev.id] || attendance[Number(ev.id)] || {};
+      Object.entries(eventAtt).forEach(([jId, status]) => {
+        allTotalAssigned++;
+        if (status === 'HADIR' || status === 'DARING') {
+          allHadirCount++;
+        }
+      });
+    });
+
+    const allRate = allTotalAssigned > 0 ? Math.round((allHadirCount / allTotalAssigned) * 100) : 0;
+
+    const overallCard = {
+      id: 'ALL_CATEGORIES',
+      nama_kategori: 'Semua Kategori (Keseluruhan)',
+      deskripsi: 'Persentase akumulasi seluruh kategori jamaah terdaftar',
+      totalMembers: totalActiveMembers,
+      hadirCount: allHadirCount,
+      totalAssigned: allTotalAssigned,
+      rate: allRate,
+      isOverall: true
+    };
+
     if (activeTab !== 'statistik') {
-      return categories.map(cat => ({
-        ...cat,
-        totalMembers: cat.memberCount || 0,
-        hadirCount: 0,
-        rate: 0,
-      }));
+      return [
+        overallCard,
+        ...categories.map(cat => ({
+          ...cat,
+          totalMembers: cat.memberCount || 0,
+          hadirCount: 0,
+          totalAssigned: 0,
+          rate: 0,
+          isOverall: false
+        }))
+      ];
     }
 
-    return categories.map(cat => {
+    const catList = categories.map(cat => {
       // Find members of this category
       const members = jamaahList.filter(j => j.categoryIds && j.categoryIds.includes(cat.id));
       const memberIds = new Set(members.map(m => m.id));
 
-      // Count attendance across all recorded events
+      // Hitung kehadiran pada acara-acara dalam rentang periode terpilih
       let hadirCount = 0;
       let totalAssigned = 0;
 
-      Object.values(attendance).forEach(eventAtt => {
+      statsPeriodEvents.forEach(ev => {
+        const eventAtt = attendance[ev.id] || attendance[Number(ev.id)] || {};
         Object.entries(eventAtt).forEach(([jId, status]) => {
           if (memberIds.has(Number(jId))) {
             totalAssigned++;
@@ -92,10 +168,81 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
         ...cat,
         totalMembers: members.length || cat.memberCount || 0,
         hadirCount,
-        rate
+        totalAssigned,
+        rate,
+        isOverall: false
       };
     });
-  }, [categories, jamaahList, attendance, activeTab]);
+
+    return [overallCard, ...catList];
+  }, [categories, jamaahList, attendance, statsPeriodEvents, activeTab]);
+
+  // Daftar acara untuk tabel rekapitulasi (disortir dan difilter periode)
+  const eventRecapList = useMemo(() => {
+    const list = statsPeriodEvents
+      .filter(e => e.show_statistics !== false)
+      .map(event => {
+        const att = Object.values(attendance[event.id] || attendance[Number(event.id)] || {});
+        const hadir = att.filter(s => s === 'HADIR').length;
+        const daring = att.filter(s => s === 'DARING').length;
+        const izin = att.filter(s => s === 'IZIN' || s === 'SAKIT').length;
+        const totalTercatat = att.length;
+        const totalHadir = hadir + daring;
+        const rate = totalTercatat > 0 ? Math.round((totalHadir / totalTercatat) * 100) : 0;
+
+        return {
+          ...event,
+          hadir,
+          daring,
+          izin,
+          totalTercatat,
+          totalHadir,
+          rate,
+        };
+      });
+
+    return [...list].sort((a, b) => {
+      if (statsSortOrder === 'DATE_DESC') {
+        const da = a.tanggal ? new Date(a.tanggal).getTime() : 0;
+        const db = b.tanggal ? new Date(b.tanggal).getTime() : 0;
+        return db - da;
+      }
+      if (statsSortOrder === 'DATE_ASC') {
+        const da = a.tanggal ? new Date(a.tanggal).getTime() : 0;
+        const db = b.tanggal ? new Date(b.tanggal).getTime() : 0;
+        return da - db;
+      }
+      if (statsSortOrder === 'RATE_DESC') {
+        return b.rate - a.rate;
+      }
+      if (statsSortOrder === 'RATE_ASC') {
+        return a.rate - b.rate;
+      }
+      if (statsSortOrder === 'TITLE_ASC') {
+        return (a.tema || '').localeCompare(b.tema || '');
+      }
+      return 0;
+    });
+  }, [statsPeriodEvents, attendance, statsSortOrder]);
+
+  // Ringkasan akumulatif periode statistik
+  const statsSummary = useMemo(() => {
+    let totalHadirSemua = 0;
+    let totalKesempatan = 0;
+
+    eventRecapList.forEach(e => {
+      totalHadirSemua += e.totalHadir;
+      totalKesempatan += e.totalTercatat;
+    });
+
+    const avgRate = totalKesempatan > 0 ? Math.round((totalHadirSemua / totalKesempatan) * 100) : 0;
+
+    return {
+      totalEvents: eventRecapList.length,
+      totalHadirSemua,
+      avgRate,
+    };
+  }, [eventRecapList]);
 
   // Pinned bulletins for announcement banner
   const pinnedAnnouncements = useMemo(() => {
@@ -106,7 +253,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
   const filteredBulletins = useMemo(() => {
     return (bulletins || []).filter(b => {
       const matchType = bulletinFilter === 'ALL' || b.tipe === bulletinFilter;
-      const matchSearch = 
+      const matchSearch =
         !bulletinSearch ||
         (b.judul && b.judul.toLowerCase().includes(bulletinSearch.toLowerCase())) ||
         (b.konten && b.konten.toLowerCase().includes(bulletinSearch.toLowerCase())) ||
@@ -159,7 +306,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
               </div>
             </div>
 
-            {/* Right Hero Spotlight Card: Kajian Terdekat */}
+            {/* Right Hero Spotlight Card: Agenda Terdekat */}
             {nextEvent && (
               <div className="lg:col-span-5">
                 <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 shadow-2xl text-white">
@@ -358,31 +505,28 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
                 <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
                   <button
                     onClick={() => setBulletinFilter('ALL')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      bulletinFilter === 'ALL'
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${bulletinFilter === 'ALL'
                         ? 'bg-white text-brand-900 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                      }`}
                   >
                     Semua ({bulletins.length})
                   </button>
                   <button
                     onClick={() => setBulletinFilter('PENGUMUMAN')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      bulletinFilter === 'PENGUMUMAN'
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${bulletinFilter === 'PENGUMUMAN'
                         ? 'bg-amber-500 text-slate-950 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                      }`}
                   >
                     📢 Pengumuman
                   </button>
                   <button
                     onClick={() => setBulletinFilter('BERITA')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      bulletinFilter === 'BERITA'
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${bulletinFilter === 'BERITA'
                         ? 'bg-brand-700 text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
-                    }`}
+                      }`}
                   >
                     📰 Berita
                   </button>
@@ -399,11 +543,10 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
                     <div
                       key={b.id}
                       onClick={() => setSelectedBulletinForModal(b)}
-                      className={`group cursor-pointer bg-white rounded-2xl border transition-all duration-200 overflow-hidden flex flex-col hover:-translate-y-1 hover:shadow-card ${
-                        isPengumuman
+                      className={`group cursor-pointer bg-white rounded-2xl border transition-all duration-200 overflow-hidden flex flex-col hover:-translate-y-1 hover:shadow-card ${isPengumuman
                           ? 'border-amber-200/80 shadow-subtle hover:border-amber-300'
                           : 'border-slate-200/90 shadow-subtle hover:border-brand-300'
-                      }`}
+                        }`}
                     >
                       {/* Image Thumbnail for Berita / Pengumuman */}
                       {b.gambar_url ? (
@@ -504,45 +647,251 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
         {/* Tab 2: Statistik Kehadiran */}
         {activeTab === 'statistik' && (
           <div className="space-y-8 animate-fade-in">
-            <div className="pb-4 border-b border-slate-200">
-              <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
-                <BarChart3 className="w-6 h-6 text-brand-700" />
-                Statistik Kehadiran Jamaah
-              </h2>
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-4 border-b border-slate-200">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+                  <BarChart3 className="w-6 h-6 text-brand-700" />
+                  Statistik & Rekapitulasi Kehadiran
+                </h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Pantau persentase kehadiran per bulan, per minggu, atau rentang tanggal tertentu secara transparan.
+                </p>
+              </div>
+
+              {/* Sortir Dropdown */}
+              <div className="flex items-center gap-2 self-start md:self-auto">
+                <div className="flex items-center gap-1.5 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-xs text-xs">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="text-slate-500 font-medium">Urutkan:</span>
+                  <select
+                    value={statsSortOrder}
+                    onChange={(e) => setStatsSortOrder(e.target.value)}
+                    className="font-bold text-slate-700 bg-transparent focus:outline-none cursor-pointer"
+                  >
+                    <option value="DATE_DESC">Tanggal Terbaru</option>
+                    <option value="DATE_ASC">Tanggal Terlama</option>
+                    <option value="RATE_DESC">Persentase Tertinggi</option>
+                    <option value="RATE_ASC">Persentase Terendah</option>
+                    <option value="TITLE_ASC">Nama Agenda (A - Z)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Periode Bar */}
+            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-subtle space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-brand-700" />
+                  <span className="font-bold text-slate-800 text-xs sm:text-sm">Pilih Periode Waktu</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-slate-500">Periode:</span>
+                  <span className="px-2.5 py-1 rounded-full font-bold bg-brand-50 text-brand-700 border border-brand-200/60">
+                    {statsPeriodInfo.label}
+                  </span>
+                  {statsPeriodType !== 'ALL' && (
+                    <button
+                      onClick={() => {
+                        setStatsPeriodType('ALL');
+                        setStatsStartDate('');
+                        setStatsEndDate('');
+                      }}
+                      className="text-slate-400 hover:text-slate-600 font-medium underline flex items-center gap-1 ml-1"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Reset
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setStatsPeriodType('ALL')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    statsPeriodType === 'ALL'
+                      ? 'bg-brand-700 text-white shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  Semua Waktu
+                </button>
+                <button
+                  onClick={() => setStatsPeriodType('THIS_WEEK')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    statsPeriodType === 'THIS_WEEK'
+                      ? 'bg-brand-700 text-white shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  Minggu Ini
+                </button>
+                <button
+                  onClick={() => setStatsPeriodType('THIS_MONTH')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    statsPeriodType === 'THIS_MONTH'
+                      ? 'bg-brand-700 text-white shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  Bulan Ini
+                </button>
+                <button
+                  onClick={() => setStatsPeriodType('SPECIFIC_MONTH')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    statsPeriodType === 'SPECIFIC_MONTH'
+                      ? 'bg-brand-700 text-white shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  Pilih Bulan
+                </button>
+                <button
+                  onClick={() => setStatsPeriodType('CUSTOM')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    statsPeriodType === 'CUSTOM'
+                      ? 'bg-brand-700 text-white shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  Rentang Tanggal
+                </button>
+              </div>
+
+              {/* Input Spesifik Bulan */}
+              {statsPeriodType === 'SPECIFIC_MONTH' && (
+                <div className="pt-1 flex flex-wrap items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+                  <div className="flex items-center gap-2 text-xs">
+                    <label className="font-semibold text-slate-600">Bulan:</label>
+                    <select
+                      value={statsMonth}
+                      onChange={(e) => setStatsMonth(Number(e.target.value))}
+                      className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    >
+                      {INDONESIAN_MONTHS.map(m => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <label className="font-semibold text-slate-600">Tahun:</label>
+                    <select
+                      value={statsYear}
+                      onChange={(e) => setStatsYear(Number(e.target.value))}
+                      className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    >
+                      {[currentYear - 2, currentYear - 1, currentYear, currentYear + 1].map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Input Rentang Tanggal Kustom */}
+              {statsPeriodType === 'CUSTOM' && (
+                <div className="pt-1 flex flex-wrap items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200/80 text-xs">
+                  <div className="flex items-center gap-2">
+                    <label className="font-semibold text-slate-600">Mulai:</label>
+                    <input
+                      type="date"
+                      value={statsStartDate}
+                      onChange={(e) => setStatsStartDate(e.target.value)}
+                      className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="font-semibold text-slate-600">Sampai:</label>
+                    <input
+                      type="date"
+                      value={statsEndDate}
+                      onChange={(e) => setStatsEndDate(e.target.value)}
+                      className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    />
+                  </div>
+                  {(statsStartDate || statsEndDate) && (
+                    <button
+                      onClick={() => { setStatsStartDate(''); setStatsEndDate(''); }}
+                      className="text-xs text-rose-600 hover:text-rose-700 font-semibold underline"
+                    >
+                      Bersihkan Tanggal
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Ringkasan Banner Periode */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 text-center shadow-subtle">
+                <span className="text-2xl font-extrabold text-slate-900">{statsSummary.totalEvents}</span>
+                <span className="block text-[11px] font-semibold text-slate-500 uppercase mt-1">Agenda Terdata</span>
+              </div>
+              <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 text-center">
+                <span className="text-2xl font-extrabold text-emerald-700">{statsSummary.avgRate}%</span>
+                <span className="block text-[11px] font-semibold text-emerald-800 uppercase mt-1">Rata-rata Kehadiran</span>
+              </div>
+              <div className="bg-sky-50 p-4 rounded-2xl border border-sky-100 text-center">
+                <span className="text-2xl font-extrabold text-sky-700">{statsSummary.totalHadirSemua}</span>
+                <span className="block text-[11px] font-semibold text-sky-800 uppercase mt-1">Total Jamaah Hadir</span>
+              </div>
             </div>
 
             {/* Category Cards Overview */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {categoryStats.map(cat => (
-                <div key={cat.id} className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-subtle hover:shadow-card transition-all">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-bold text-slate-900 text-base">
-                      {cat.nama_kategori}
-                    </span>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-brand-50 text-brand-700 border border-brand-200/60">
-                      {cat.totalMembers} Jamaah
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-slate-500 mb-4 line-clamp-1">
-                    {cat.deskripsi || 'Kelompok kategori jamaah terdaftar'}
-                  </p>
-
-                  {/* Progress bar */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-500">Tingkat Keaktifan</span>
-                      <span className="font-bold text-emerald-700">{cat.rate}%</span>
+            <div className="space-y-3">
+              <h3 className="font-bold text-slate-800 text-base">Tingkat Partisipasi per Kategori Jamaah</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {categoryStats.map(cat => (
+                  <div
+                    key={cat.id}
+                    className={`rounded-2xl p-5 transition-all ${
+                      cat.isOverall
+                        ? 'bg-gradient-to-br from-brand-50/90 via-white to-emerald-50/70 border-2 border-brand-300/80 shadow-card ring-1 ring-brand-500/20'
+                        : 'bg-white rounded-2xl border border-slate-200/90 shadow-subtle hover:shadow-card'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {cat.isOverall && (
+                          <span className="w-2.5 h-2.5 rounded-full bg-brand-600 shrink-0 ring-4 ring-brand-100"></span>
+                        )}
+                        <span className={`text-base truncate ${cat.isOverall ? 'font-extrabold text-brand-950' : 'font-bold text-slate-900'}`}>
+                          {cat.nama_kategori}
+                        </span>
+                      </div>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0 ${
+                        cat.isOverall
+                          ? 'bg-brand-700 text-white shadow-xs'
+                          : 'bg-brand-50 text-brand-700 border border-brand-200/60'
+                      }`}>
+                        {cat.totalMembers} Jamaah
+                      </span>
                     </div>
-                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-gradient-to-r from-emerald-500 to-brand-600 rounded-full transition-all duration-500"
-                        style={{ width: `${cat.rate}%` }}
-                      ></div>
+
+                    <p className={`text-xs mb-4 line-clamp-1 ${cat.isOverall ? 'text-slate-600 font-medium' : 'text-slate-500'}`}>
+                      {cat.deskripsi || 'Kelompok kategori jamaah terdaftar'}
+                    </p>
+
+                    {/* Progress bar */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500 font-medium">Tingkat Keaktifan</span>
+                        <span className={`font-bold ${cat.isOverall ? 'text-emerald-800 text-sm' : 'text-emerald-700'}`}>
+                          {cat.rate}% {cat.totalAssigned > 0 ? `(${cat.hadirCount}/${cat.totalAssigned})` : ''}
+                        </span>
+                      </div>
+                      <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-emerald-500 to-brand-600 rounded-full transition-all duration-500"
+                          style={{ width: `${cat.rate}%` }}
+                        ></div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
 
             {/* Attendance breakdown per event table */}
@@ -550,16 +899,92 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
               <div className="p-5 border-b border-slate-100 flex items-center justify-between">
                 <div>
                   <h3 className="font-bold text-slate-800 text-base">Rekapitulasi Kehadiran per Acara</h3>
-                  <p className="text-xs text-slate-500">Menampilkan data acara dengan statistik publik yang aktif.</p>
+                  <p className="text-xs text-slate-500">
+                    Menampilkan persentase dan rincian kehadiran kegiatan pada {statsPeriodInfo.label}.
+                  </p>
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
+              {/* Mobile Card List */}
+              <div className="sm:hidden divide-y divide-slate-100">
+                {eventRecapList.length > 0 ? (
+                  eventRecapList.map(event => (
+                    <div key={event.id} className="p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <span className="font-semibold text-slate-800 text-sm block line-clamp-2">{event.tema}</span>
+                          {event.pembicara && event.pembicara.trim() && (
+                            <span className="text-xs text-slate-400 block mt-0.5">{event.pembicara}</span>
+                          )}
+                          <span className="text-xs text-slate-500 block mt-1">
+                            {new Date(event.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </span>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold block ${
+                            event.rate >= 75
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : event.rate >= 50
+                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                              : 'bg-rose-100 text-rose-800 border border-rose-200'
+                          }`}>
+                            {event.rate}% Hadir
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+                        <div className="bg-emerald-50 border border-emerald-100/80 rounded-xl p-2">
+                          <span className="block text-[11px] text-emerald-700 font-medium">Hadir Fisik</span>
+                          <span className="text-sm font-bold text-emerald-800">{event.hadir}</span>
+                        </div>
+                        <div className="bg-sky-50 border border-sky-100/80 rounded-xl p-2">
+                          <span className="block text-[11px] text-sky-700 font-medium">Daring</span>
+                          <span className="text-sm font-bold text-sky-800">{event.daring}</span>
+                        </div>
+                        <div className="bg-amber-50 border border-amber-100/80 rounded-xl p-2">
+                          <span className="block text-[11px] text-amber-700 font-medium">Izin / Sakit</span>
+                          <span className="text-sm font-bold text-amber-800">{event.izin}</span>
+                        </div>
+                      </div>
+
+                      <div className="pt-1 flex justify-end">
+                        <button
+                          onClick={() => setSelectedEventForModal(event)}
+                          className="text-xs font-semibold text-brand-700 hover:text-brand-900 bg-brand-50 hover:bg-brand-100 px-3.5 py-1.5 rounded-lg transition-colors"
+                        >
+                          Lihat Rincian Jamaah
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-10 text-slate-400 text-xs px-4 space-y-2">
+                    <p>Tidak ada kegiatan yang sesuai dengan periode terpilih.</p>
+                    {statsPeriodType !== 'ALL' && (
+                      <button
+                        onClick={() => {
+                          setStatsPeriodType('ALL');
+                          setStatsStartDate('');
+                          setStatsEndDate('');
+                        }}
+                        className="text-xs text-brand-700 font-bold underline"
+                      >
+                        Reset ke Semua Waktu
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
                     <tr>
-                      <th className="px-5 py-3">Nama Acara / Kajian</th>
+                      <th className="px-5 py-3">Nama Acara / Agenda</th>
                       <th className="px-5 py-3">Tanggal</th>
+                      <th className="px-5 py-3 text-center">Persentase Kehadiran</th>
                       <th className="px-5 py-3 text-center">Hadir Fisik</th>
                       <th className="px-5 py-3 text-center">Daring</th>
                       <th className="px-5 py-3 text-center">Izin / Sakit</th>
@@ -567,59 +992,82 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {publishedEvents.filter(e => e.show_statistics).length > 0 ? (
-                      publishedEvents.filter(e => e.show_statistics).map(event => {
-                        const att = Object.values(attendance[event.id] || {});
-                        const hadir = att.filter(s => s === 'HADIR').length;
-                        const daring = att.filter(s => s === 'DARING').length;
-                        const izin = att.filter(s => s === 'IZIN' || s === 'SAKIT').length;
-
-                        return (
-                          <tr key={event.id} className="hover:bg-slate-50/70 transition-colors">
-                            <td className="px-5 py-3.5">
-                              <span className="font-semibold text-slate-800 block line-clamp-1">{event.tema}</span>
-                              {event.pembicara && event.pembicara.trim() && (
-                                <span className="text-xs text-slate-400">{event.pembicara}</span>
-                              )}
-                            </td>
-                            <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">
-                              {new Date(event.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                            </td>
-                            <td className="px-5 py-3.5 text-center">
-                              <span className="font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full text-xs">
-                                {hadir}
+                    {eventRecapList.length > 0 ? (
+                      eventRecapList.map(event => (
+                        <tr key={event.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="px-5 py-3.5">
+                            <span className="font-semibold text-slate-800 block line-clamp-1">{event.tema}</span>
+                            {event.pembicara && event.pembicara.trim() && (
+                              <span className="text-xs text-slate-400">{event.pembicara}</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 text-slate-600 whitespace-nowrap">
+                            {new Date(event.tanggal).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </td>
+                          <td className="px-5 py-3.5 text-center">
+                            <div className="inline-flex items-center gap-2">
+                              <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-300 ${
+                                    event.rate >= 75 ? 'bg-emerald-500' : event.rate >= 50 ? 'bg-amber-500' : 'bg-rose-500'
+                                  }`}
+                                  style={{ width: `${event.rate}%` }}
+                                />
+                              </div>
+                              <span className={`font-bold text-xs ${
+                                event.rate >= 75 ? 'text-emerald-700' : event.rate >= 50 ? 'text-amber-700' : 'text-rose-700'
+                              }`}>
+                                {event.rate}%
                               </span>
-                            </td>
-                            <td className="px-5 py-3.5 text-center">
-                              <span className="font-bold text-sky-700 bg-sky-50 px-2.5 py-0.5 rounded-full text-xs">
-                                {daring}
-                              </span>
-                            </td>
-                            <td className="px-5 py-3.5 text-center">
-                              <span className="font-medium text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full text-xs">
-                                {izin}
-                              </span>
-                            </td>
-                            <td className="px-5 py-3.5 text-right">
-                              <button
-                                onClick={() => setSelectedEventForModal(event)}
-                                className="text-xs font-semibold text-brand-700 hover:text-brand-900 bg-brand-50 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition-colors"
-                              >
-                                Detail
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
+                            </div>
+                          </td>
+                          <td className="px-5 py-3.5 text-center">
+                            <span className="font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full text-xs">
+                              {event.hadir}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-center">
+                            <span className="font-bold text-sky-700 bg-sky-50 px-2.5 py-0.5 rounded-full text-xs">
+                              {event.daring}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-center">
+                            <span className="font-medium text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full text-xs">
+                              {event.izin}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            <button
+                              onClick={() => setSelectedEventForModal(event)}
+                              className="text-xs font-semibold text-brand-700 hover:text-brand-900 bg-brand-50 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              Detail
+                            </button>
+                          </td>
+                        </tr>
+                      ))
                     ) : (
                       <tr>
-                        <td colSpan="6" className="text-center py-10 text-slate-400 text-xs">
-                          Belum ada rekapitulasi kehadiran kegiatan yang dipublikasikan di database.
+                        <td colSpan="7" className="text-center py-10 text-slate-400 text-xs">
+                          Tidak ada kegiatan pengajian pada periode {statsPeriodInfo.label}.
+                          {statsPeriodType !== 'ALL' && (
+                            <div className="mt-2">
+                              <button
+                                onClick={() => {
+                                  setStatsPeriodType('ALL');
+                                  setStatsStartDate('');
+                                  setStatsEndDate('');
+                                }}
+                                className="text-xs text-brand-700 font-bold underline"
+                              >
+                                Reset ke Semua Waktu
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )}
                   </tbody>
-
                 </table>
               </div>
             </div>

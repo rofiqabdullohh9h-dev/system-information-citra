@@ -82,7 +82,7 @@ export default function CategoryManagement() {
         <div>
           <h2 className="text-lg font-bold text-slate-900">Kategori Jamaah</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Kelompokkan jamaah untuk sasaran kajian dan filter presensi absensi.
+            Kelompokkan jamaah untuk sasaran agenda dan filter presensi absensi.
           </p>
         </div>
 

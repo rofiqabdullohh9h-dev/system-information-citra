@@ -121,14 +121,25 @@ export const createJamaah = async (req, res, next) => {
 
     if (jamaahError) throw jamaahError;
 
-    // 2. Connect Categories
-    const catIds = categoryIds && categoryIds.length > 0 ? categoryIds : [1];
-    const categoryRows = catIds.map(cid => ({
-      jamaahId: newJamaah.id,
-      categoryId: parseInt(cid),
-    }));
+    // 2. Hubungkan Kategori (Jamaah hanya memiliki 1 kategori)
+    const rawCatId = req.body.categoryId || (Array.isArray(categoryIds) && categoryIds[0]);
+    let assignedCategoryIds = [];
+    let assignedCategories = [];
 
-    await supabase.from('JamaahCategory').insert(categoryRows);
+    if (rawCatId) {
+      const singleCid = parseInt(rawCatId);
+      if (!isNaN(singleCid) && singleCid > 0) {
+        const { data: dbCat } = await supabase.from('Category').select('*').eq('id', singleCid).single();
+        if (dbCat) {
+          await supabase.from('JamaahCategory').insert([{
+            jamaahId: newJamaah.id,
+            categoryId: dbCat.id,
+          }]);
+          assignedCategoryIds = [dbCat.id];
+          assignedCategories = [dbCat];
+        }
+      }
+    }
 
     // 3. Audit Log
     await logAudit({
@@ -144,11 +155,11 @@ export const createJamaah = async (req, res, next) => {
       message: 'Data jamaah berhasil ditambahkan.',
       data: {
         ...newJamaah,
-        categoryIds: catIds,
+        categoryIds: assignedCategoryIds,
+        categories: assignedCategories,
       },
     });
   } catch (error) {
-
     next(error);
   }
 };
@@ -188,14 +199,25 @@ export const updateJamaah = async (req, res, next) => {
 
     if (updateError) throw updateError;
 
-    // 2. Sync Categories
-    if (categoryIds && Array.isArray(categoryIds)) {
+    // 2. Sync Category (Jamaah hanya memiliki 1 kategori)
+    const rawCatId = req.body.categoryId || (Array.isArray(categoryIds) && categoryIds[0]);
+    let assignedCategoryIds = [];
+    let assignedCategories = [];
+
+    if (rawCatId !== undefined) {
       await supabase.from('JamaahCategory').delete().eq('jamaahId', jamaahId);
-      const categoryRows = categoryIds.map(cid => ({
-        jamaahId,
-        categoryId: parseInt(cid),
-      }));
-      await supabase.from('JamaahCategory').insert(categoryRows);
+      const singleCid = parseInt(rawCatId);
+      if (!isNaN(singleCid) && singleCid > 0) {
+        const { data: dbCat } = await supabase.from('Category').select('*').eq('id', singleCid).single();
+        if (dbCat) {
+          await supabase.from('JamaahCategory').insert([{
+            jamaahId,
+            categoryId: dbCat.id,
+          }]);
+          assignedCategoryIds = [dbCat.id];
+          assignedCategories = [dbCat];
+        }
+      }
     }
 
     // 3. Audit Log
@@ -212,11 +234,11 @@ export const updateJamaah = async (req, res, next) => {
       message: 'Data jamaah berhasil diperbarui.',
       data: {
         ...updated,
-        categoryIds: categoryIds || [],
+        categoryIds: assignedCategoryIds,
+        categories: assignedCategories,
       },
     });
   } catch (error) {
-
     next(error);
   }
 };
@@ -278,19 +300,40 @@ export const bulkImportJamaah = async (req, res, next) => {
       });
     }
 
+    // Ambil daftar kategori yang ada di DB untuk memvalidasi relasi
+    const { data: dbCategories } = await supabase.from('Category').select('id, nama_kategori');
+    const validCatIdSet = new Set((dbCategories || []).map(c => c.id));
+    const catNameToId = new Map((dbCategories || []).map(c => [c.nama_kategori.toLowerCase().trim(), c.id]));
+
     let insertedCount = 0;
 
     for (const item of items) {
       if (item.nama && item.nama.trim()) {
         const gender = item.jenis_kelamin && item.jenis_kelamin.toUpperCase().startsWith('P') ? 'P' : 'L';
-        const catIds = item.categoryIds || [1];
+        
+        // Cari ID kategori dari ID atau dari nama kategori
+        const resolvedCatIds = [];
+        if (Array.isArray(item.categoryIds)) {
+          for (const cid of item.categoryIds) {
+            const num = parseInt(cid);
+            if (validCatIdSet.has(num)) resolvedCatIds.push(num);
+          }
+        }
+        if (item.kategori && typeof item.kategori === 'string') {
+          const catNames = item.kategori.split(/[,;]/).map(s => s.trim().toLowerCase());
+          for (const cn of catNames) {
+            if (catNameToId.has(cn)) {
+              resolvedCatIds.push(catNameToId.get(cn));
+            }
+          }
+        }
 
         const { data: newJ, error } = await supabase
           .from('Jamaah')
           .insert([
             {
               nama: item.nama.trim(),
-              no_whatsapp: item.no_whatsapp ? item.no_whatsapp.trim() : '',
+              no_whatsapp: item.no_whatsapp ? String(item.no_whatsapp).trim() : '',
               jenis_kelamin: gender,
             },
           ])
@@ -298,11 +341,14 @@ export const bulkImportJamaah = async (req, res, next) => {
           .single();
 
         if (!error && newJ) {
-          const categoryRows = catIds.map(cid => ({
-            jamaahId: newJ.id,
-            categoryId: parseInt(cid),
-          }));
-          await supabase.from('JamaahCategory').insert(categoryRows);
+          const uniqueCatIds = [...new Set(resolvedCatIds)];
+          const singleCatId = uniqueCatIds[0];
+          if (singleCatId) {
+            await supabase.from('JamaahCategory').insert([{
+              jamaahId: newJ.id,
+              categoryId: singleCatId,
+            }]);
+          }
           insertedCount++;
         }
       }
@@ -313,7 +359,7 @@ export const bulkImportJamaah = async (req, res, next) => {
       adminNama: req.user.nama,
       action: 'BULK_IMPORT_JAMAAH',
       target: `${insertedCount} Jamaah`,
-      details: `Pengurus ${req.user.nama} mengimpor ${insertedCount} data jamaah via CSV`,
+      details: `Pengurus ${req.user.nama} mengimpor ${insertedCount} data jamaah via Excel / CSV`,
     });
 
     res.status(201).json({

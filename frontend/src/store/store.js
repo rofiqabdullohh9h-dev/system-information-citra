@@ -323,7 +323,7 @@ export const useAppStore = create((set, get) => ({
         const updated = [newEvent, ...currentEvents.filter(e => e.id !== newEvent.id)];
         set({ events: updated });
         saveItem('events', updated);
-        get().addAuditLog('CREATE_EVENT', newEvent.tema, `Membuat jadwal kajian baru`);
+        get().addAuditLog('CREATE_EVENT', newEvent.tema, `Membuat jadwal agenda baru`);
         return newEvent;
       } else if (res && !res.success) {
         throw new Error(res.message || 'Gagal menyimpan ke database Supabase');
@@ -460,13 +460,20 @@ export const useAppStore = create((set, get) => ({
     try {
       const res = await api.createJamaah(jamaahData);
       if (res && res.success && res.data) {
-        const newPerson = res.data;
+        const newPerson = {
+          ...res.data,
+          categoryIds: (res.data.categoryIds && res.data.categoryIds.length > 0)
+            ? res.data.categoryIds
+            : (jamaahData.categoryId ? [jamaahData.categoryId] : (jamaahData.categoryIds || [])),
+        };
         const current = get().jamaah;
         const updated = [newPerson, ...current.filter(j => j.id !== newPerson.id)];
         set({ jamaah: updated });
         saveItem('jamaah', updated);
         get().addAuditLog('CREATE_JAMAAH', newPerson.nama, `Menambahkan anggota jamaah baru`);
         return newPerson;
+      } else if (res && !res.success) {
+        throw new Error(res.message || 'Gagal menambahkan jamaah');
       }
     } catch (err) {
       console.warn('API createJamaah failed:', err.message);
@@ -477,7 +484,14 @@ export const useAppStore = create((set, get) => ({
   updateJamaah: async (id, jamaahData) => {
     try {
       const res = await api.updateJamaah(id, jamaahData);
-      const updatedPerson = res?.data || { id, ...jamaahData };
+      const fallbackCatIds = jamaahData.categoryId ? [jamaahData.categoryId] : (jamaahData.categoryIds || []);
+      const updatedPerson = {
+        id,
+        ...(res?.data || jamaahData),
+        categoryIds: (res?.data?.categoryIds && res.data.categoryIds.length > 0)
+          ? res.data.categoryIds
+          : fallbackCatIds,
+      };
       const current = get().jamaah;
       const updated = current.map(j => j.id === id ? { ...j, ...updatedPerson } : j);
       set({ jamaah: updated });
