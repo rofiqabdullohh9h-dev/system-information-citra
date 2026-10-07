@@ -137,15 +137,32 @@ export const recordBulkAttendance = async (req, res, next) => {
 
     const count = rows.length;
 
-    // Catat audit log untuk submit massal/rekap akhir agar tidak membanjiri log pada klik individu
-    if (count > 1 || autoAlpa) {
+    // Catat audit log untuk setiap aktivitas pencatatan absensi (baik individu maupun massal)
+    try {
+      let auditDetails = '';
+      if (count === 1) {
+        const targetJamaahId = parseInt(entries[0][0]);
+        const targetStatus = entries[0][1];
+        const { data: jData } = await supabase
+          .from('Jamaah')
+          .select('nama')
+          .eq('id', targetJamaahId)
+          .single();
+        const namaJamaah = jData?.nama || `Jamaah #${targetJamaahId}`;
+        auditDetails = `Pengurus ${adminNama} mencatat status "${targetStatus}" untuk ${namaJamaah} pada agenda "${event.tema}".`;
+      } else {
+        auditDetails = `Pengurus ${adminNama} merekap absensi kehadiran untuk ${count} jamaah${autoAlpa ? ' (tanpa keterangan otomatis ALPA)' : ''} pada agenda "${event.tema}".`;
+      }
+
       await logAudit({
         adminId,
         adminNama,
         action: 'RECORD_ATTENDANCE',
         target: event.tema,
-        details: `Pengurus ${adminNama} mencatat absensi kehadiran untuk ${count} jamaah${autoAlpa ? ' (tanpa keterangan otomatis ALPA)' : ''}`,
+        details: auditDetails,
       });
+    } catch (auditErr) {
+      console.warn('Gagal mencatat audit log kehadiran:', auditErr.message);
     }
 
     res.status(200).json({

@@ -3,9 +3,10 @@ import { useAppStore } from './store/store';
 import PublicHeader from './components/common/PublicHeader';
 import Footer from './components/common/Footer';
 import PublicDashboard from './pages/PublicDashboard';
+import { lazyWithRetry } from './utils/lazyWithRetry';
 
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
-const LoginPage = lazy(() => import('./pages/LoginPage'));
+const AdminDashboard = lazyWithRetry(() => import('./pages/AdminDashboard'));
+const LoginPage = lazyWithRetry(() => import('./pages/LoginPage'));
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -20,12 +21,22 @@ class ErrorBoundary extends React.Component {
   }
   render() {
     if (this.state.hasError) {
+      const isChunkError = (
+        this.state.error?.message?.includes('Failed to fetch dynamically imported module') ||
+        this.state.error?.message?.includes('MIME type of "text/html"') ||
+        this.state.error?.message?.includes('dynamically imported module')
+      );
+
       return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
           <div className="max-w-md w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-md text-center space-y-3">
-            <h2 className="text-lg font-bold text-slate-800">Terjadi Kesalahan Tampilan</h2>
+            <h2 className="text-lg font-bold text-slate-800">
+              {isChunkError ? 'Pembaruan Sistem Tersedia' : 'Terjadi Kesalahan Tampilan'}
+            </h2>
             <p className="text-xs text-slate-500">
-              {this.state.error?.message || 'Halaman mengalami kendala saat dimuat.'}
+              {isChunkError 
+                ? 'Versi aplikasi baru telah diperbarui. Silakan muat ulang halaman untuk memuat fitur dan data terbaru.'
+                : (this.state.error?.message || 'Halaman mengalami kendala saat dimuat.')}
             </p>
             <button
               onClick={() => {

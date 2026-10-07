@@ -118,21 +118,14 @@ export const useAppStore = create((set, get) => ({
       const user = get().currentUser;
       const isAdmin = Boolean(user) || get().portalMode === 'admin';
 
-      // Smart Selective Query:
-      // Pengunjung publik hanya perlu Categories, Events, dan Bulletins
-      // Jamaah dan Attendance hanya di-fetch bila admin atau saat data awal masih kosong
-      const currentJamaah = get().jamaah;
-      const currentAttendance = get().attendance;
-      const shouldFetchJamaah = isAdmin || currentJamaah.length === 0 || options?.includeAll === true;
-      const shouldFetchAttendance = isAdmin || Object.keys(currentAttendance).length === 0 || options?.includeAll === true;
-
-      // Jalankan seluruh pemanggilan API secara paralel (Promise.allSettled)
+      // Seluruh browser (baik pengunjung portal publik maupun pengurus) wajib memuat
+      // Categories, Events, Bulletins, Jamaah, dan Attendance agar angka kehadiran selalu 100% sinkron
       const [catResult, eventResult, bulResult, jamResult, attResult, adminResult, logResult] = await Promise.allSettled([
         api.getCategories(),
         api.getEvents(),
         api.getBulletins(),
-        shouldFetchJamaah ? api.getJamaah() : Promise.resolve(null),
-        shouldFetchAttendance ? api.getAllAttendance() : Promise.resolve(null),
+        api.getJamaah(),
+        api.getAllAttendance(),
         user ? api.getPengurus() : Promise.resolve(null),
         user ? api.getAuditLogs() : Promise.resolve(null),
       ]);
@@ -392,7 +385,20 @@ export const useAppStore = create((set, get) => ({
 
     // 2. Immediately upsert this single record to Supabase database (autoAlpa: false)
     try {
-      await api.recordBulkAttendance(eventId, { [jamaahId]: status }, false);
+      const res = await api.recordBulkAttendance(eventId, { [jamaahId]: status }, false);
+      if (res && res.success) {
+        const user = get().currentUser || { id: 'admin-001', nama: 'Pengurus' };
+        const event = get().events.find(e => e.id === Number(eventId));
+        const person = get().jamaah.find(j => j.id === Number(jamaahId));
+        get().addAuditLog(
+          'RECORD_ATTENDANCE',
+          event ? event.tema : `Agenda #${eventId}`,
+          `Pengurus ${user.nama} mencatat status "${status}" untuk ${person ? person.nama : `Jamaah #${jamaahId}`}`
+        );
+        notifyDataChanged();
+      } else if (res && !res.success) {
+        console.warn('API submitSingleAttendance ditolak oleh server:', res.message);
+      }
     } catch (err) {
       console.warn('API submitSingleAttendance failed:', err.message);
     }

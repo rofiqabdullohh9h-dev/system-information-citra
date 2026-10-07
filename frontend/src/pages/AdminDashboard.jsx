@@ -2,17 +2,18 @@ import React, { useState, lazy, Suspense } from 'react';
 import { useAppStore } from '../store/store';
 import AdminSidebar from '../components/common/AdminSidebar';
 import AdminHeader from '../components/common/AdminHeader';
+import { lazyWithRetry } from '../utils/lazyWithRetry';
 
-const AdminOverview = lazy(() => import('./AdminOverview'));
-const EventManagement = lazy(() => import('./EventManagement'));
-const AttendanceForm = lazy(() => import('./AttendanceForm'));
-const JamaahManagement = lazy(() => import('./JamaahManagement'));
-const CategoryManagement = lazy(() => import('./CategoryManagement'));
-const Analytics = lazy(() => import('./Analytics'));
-const AdminAccounts = lazy(() => import('./AdminAccounts'));
-const AuditLogs = lazy(() => import('./AuditLogs'));
-const BulletinManager = lazy(() => import('./BulletinManager'));
-const LoginPage = lazy(() => import('./LoginPage'));
+const AdminOverview = lazyWithRetry(() => import('./AdminOverview'));
+const EventManagement = lazyWithRetry(() => import('./EventManagement'));
+const AttendanceForm = lazyWithRetry(() => import('./AttendanceForm'));
+const JamaahManagement = lazyWithRetry(() => import('./JamaahManagement'));
+const CategoryManagement = lazyWithRetry(() => import('./CategoryManagement'));
+const Analytics = lazyWithRetry(() => import('./Analytics'));
+const AdminAccounts = lazyWithRetry(() => import('./AdminAccounts'));
+const AuditLogs = lazyWithRetry(() => import('./AuditLogs'));
+const BulletinManager = lazyWithRetry(() => import('./BulletinManager'));
+const LoginPage = lazyWithRetry(() => import('./LoginPage'));
 
 export default function AdminDashboard() {
   const [currentSection, setCurrentSection] = useState('overview');

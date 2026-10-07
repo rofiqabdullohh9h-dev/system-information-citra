@@ -181,9 +181,11 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
   const categories = useAppStore((state) => state.categories);
   const attendance = useAppStore((state) => state.attendance);
   const submitSingleAttendance = useAppStore((state) => state.submitSingleAttendance);
+  const submitAttendance = useAppStore((state) => state.submitAttendance);
   const saveAttendanceDraft = useAppStore((state) => state.saveAttendanceDraft);
   const syncAttendance = useAppStore((state) => state.syncAttendance);
   const currentUser = useAppStore((state) => state.currentUser);
+  const [isSavingAll, setIsSavingAll] = useState(false);
 
   // Today's date string YYYY-MM-DD
   const todayStr = getLocalDateStr(new Date());
@@ -382,6 +384,19 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
   const showNotice = (msg) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleSaveAndSyncAll = async () => {
+    if (!selectedEventId || isSavingAll) return;
+    setIsSavingAll(true);
+    try {
+      await submitAttendance(selectedEventId, localAttendance, false);
+      showNotice('Seluruh data absensi berhasil disinkronkan ke database cloud dan dicatat di audit log.');
+    } catch (err) {
+      showNotice('Gagal menyinkronkan: ' + (err.message || 'Periksa koneksi'));
+    } finally {
+      setIsSavingAll(false);
+    }
   };
 
   // Summary counts
@@ -655,18 +670,31 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
               </div>
             </div>
 
-            {/* Quick Toolbar: jamaah count */}
-            <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
-              <span className="text-xs text-slate-500 font-medium">
-                Menampilkan {displayedJamaah.length} jamaah
-              </span>
-
-              {isDraftSaved && (
-                <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-xl animate-fade-in border border-emerald-300">
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Tersimpan</span>
+            {/* Quick Toolbar: jamaah count & Save All Button */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-500 font-medium">
+                  Menampilkan {displayedJamaah.length} jamaah
                 </span>
-              )}
+
+                {isDraftSaved && (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-xl animate-fade-in border border-emerald-300">
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Tersimpan ke Cloud</span>
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveAndSyncAll}
+                disabled={isSavingAll}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-brand-700 hover:bg-brand-800 shadow-xs transition-colors disabled:opacity-50"
+                title="Sinkronkan seluruh data absensi ini secara massal ke cloud database"
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                <span>{isSavingAll ? 'Menyinkronkan...' : 'Sinkronkan & Simpan Semua'}</span>
+              </button>
             </div>
 
             {/* Auto-Notice Banner */}

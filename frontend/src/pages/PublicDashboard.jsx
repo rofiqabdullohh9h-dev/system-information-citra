@@ -286,10 +286,18 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
             {/* Left Hero Text */}
-            <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
-              <h1 className="text-xl sm:text-2xl lg:text-[28px] font-bold text-white leading-relaxed max-w-2xl mx-auto lg:mx-0">
-                Dibalik manusia yang mempersulit langkah kita, ada Allah yang sedang mempermudah jalan kita. Mungkin hari ini terasa rumit dan berat, tapi tenang aja Allah tau cara membuat semuanya menjadi tepat.
+            <div className="lg:col-span-7 space-y-4 text-center lg:text-left">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white tracking-wide uppercase drop-shadow-sm">
+                GOLEK DALANE SYUKUR
               </h1>
+              <div className="text-sm sm:text-base lg:text-lg text-slate-200 leading-relaxed max-w-2xl mx-auto lg:mx-0 space-y-2">
+                <p>
+                  Ternyata kuncinya cuma satu, yaitu lebih banyak syukurnya dan lebih sedikit cemasnya.
+                </p>
+                <p>
+                  Belajar bersyukur itu salah satu cara terbaik untuk kita buat nemuin bahagia.❤️
+                </p>
+              </div>
 
               {/* Quick action buttons */}
               <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3 pt-2">
