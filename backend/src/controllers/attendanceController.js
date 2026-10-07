@@ -72,7 +72,7 @@ export const recordBulkAttendance = async (req, res, next) => {
 
     const { data: event, error: eventError } = await supabase
       .from('Event')
-      .select('id, tema, targetCategories:EventCategory(categoryId)')
+      .select('id, tema, deskripsi, targetCategories:EventCategory(categoryId)')
       .eq('id', parseInt(eventId))
       .single();
 
@@ -91,15 +91,25 @@ export const recordBulkAttendance = async (req, res, next) => {
     // Jika autoAlpa aktif (default true): cari semua jamaah sasaran pengajian yang belum ada status/keterangan, otomatis jadikan ALPA
     if (autoAlpa) {
       const targetCategoryIds = (event.targetCategories || []).map(tc => tc.categoryId);
-      const isGeneral = targetCategoryIds.length === 0 || targetCategoryIds.includes(1);
+      const { data: allCats } = await supabase.from('Category').select('id');
+      const totalCatCount = (allCats || []).length;
+      const isGeneral = targetCategoryIds.length === 0 || targetCategoryIds.includes(1) || (totalCatCount > 0 && targetCategoryIds.length >= totalCatCount);
+
+      const targetGender = (
+        event.deskripsi && event.deskripsi.includes('<!--gender:L-->') ? 'L' :
+        event.deskripsi && event.deskripsi.includes('<!--gender:P-->') ? 'P' : 'ALL'
+      );
 
       const { data: allJamaah } = await supabase
         .from('Jamaah')
-        .select('id, isActive, categories:JamaahCategory(categoryId)')
+        .select('id, isActive, jenis_kelamin, categories:JamaahCategory(categoryId)')
         .is('deletedAt', null);
 
       (allJamaah || []).forEach(j => {
         if (j.isActive === false) return;
+        if (targetGender === 'L' && j.jenis_kelamin !== 'L') return;
+        if (targetGender === 'P' && j.jenis_kelamin !== 'P') return;
+
         const userCats = (j.categories || []).map(c => c.categoryId);
         const isEligible = isGeneral || userCats.some(cid => targetCategoryIds.includes(cid));
 

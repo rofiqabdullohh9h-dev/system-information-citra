@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Calendar, Clock, MapPin, User, Users, Share2, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { useAppStore } from '../store/store';
 import { generateEventShareText } from '../utils/shareUtils';
+import { getEligibleJamaahForEvent } from '../utils/attendanceUtils';
 
 export default function PublicEventDetail({ event, onClose, showAllAttendees = false }) {
   const [activeGenderFilter, setActiveGenderFilter] = useState('ALL');
@@ -49,21 +50,10 @@ export default function PublicEventDetail({ event, onClose, showAllAttendees = f
   const attendanceMap = (event.id && safeAttendance[event.id]) || (event.id && safeAttendance[Number(event.id)]) || {};
   const hasAttendanceRecords = Boolean(attendanceMap && Object.keys(attendanceMap).length > 0);
 
-  // Target categories & eligible jamaah
-  const targetCategoryIds = event.targetCategoryIds || [1];
-  const targetCatId = targetCategoryIds[0] || 1;
-  const isGeneralEvent = targetCatId === 1;
-  const targetGender = event.target_gender || event.targetGender || 'ALL';
-
   const eventDateStr = safeIsoDate(event.tanggal);
 
-  const eligibleJamaah = safeJamaah.filter(person => {
-    if (!person || !person.isActive) return false;
-    if (targetGender === 'L' && person.jenis_kelamin !== 'L') return false;
-    if (targetGender === 'P' && person.jenis_kelamin !== 'P') return false;
-    if (isGeneralEvent) return true;
-    return (person.categoryIds || []).includes(targetCatId);
-  });
+  // Dapatkan seluruh jamaah yang berhak/menjadi sasaran acara ini secara akurat
+  const eligibleJamaah = getEligibleJamaahForEvent(event, safeJamaah, safeCategories);
 
   // Attendees list: only map if attendance has actually been recorded
   const attendeeDetails = hasAttendanceRecords ? eligibleJamaah.map((person) => {
@@ -336,7 +326,7 @@ export default function PublicEventDetail({ event, onClose, showAllAttendees = f
             /* Statistics Hidden (FR-VISIBILITY-005) */
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs sm:text-sm text-slate-500 flex items-center gap-3">
               <Info className="w-4 h-4 text-slate-400 shrink-0" />
-              <span>Statistik kehadiran untuk pengajian ini bersifat internal dan tidak ditampilkan untuk publik.</span>
+              <span>Statistik kehadiran untuk agenda ini bersifat internal dan tidak ditampilkan untuk publik.</span>
             </div>
           )}
         </div>

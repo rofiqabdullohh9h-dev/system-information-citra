@@ -19,6 +19,10 @@ import {
   INDONESIAN_MONTHS,
   formatDateWIB
 } from '../utils/dateUtils';
+import {
+  getEligibleJamaahForEvent,
+  calculateEventAttendanceStats
+} from '../utils/attendanceUtils';
 
 export default function AdminOverview({ onNavigate }) {
   const jamaahList = useAppStore((state) => state.jamaah);
@@ -73,25 +77,9 @@ export default function AdminOverview({ onNavigate }) {
   let totalAttended = 0;
   let totalRecords = 0;
   overviewFilteredEvents.forEach(ev => {
-    const attMap = attendance[ev.id] || attendance[Number(ev.id)] || {};
-    const targetCats = (ev.targetCategoryIds && ev.targetCategoryIds.length > 0)
-      ? ev.targetCategoryIds
-      : (ev.targetCategoryId ? [ev.targetCategoryId] : [1]);
-    const isGeneral = targetCats.includes(1) || (categories.length > 0 && targetCats.length >= categories.length);
-    const targetGender = ev.target_gender || ev.targetGender || 'ALL';
-    const eligible = jamaahList.filter(j => {
-      if (!j.isActive) return false;
-      if (targetGender === 'L' && j.jenis_kelamin !== 'L') return false;
-      if (targetGender === 'P' && j.jenis_kelamin !== 'P') return false;
-      if (isGeneral) return true;
-      return (j.categoryIds || []).some(cid => targetCats.includes(cid));
-    });
-
-    eligible.forEach(j => {
-      totalRecords++;
-      const s = attMap[j.id];
-      if (s === 'HADIR' || s === 'DARING') totalAttended++;
-    });
+    const stats = calculateEventAttendanceStats(ev, attendance, jamaahList, categories, events);
+    totalAttended += stats.totalHadir;
+    totalRecords += stats.totalTarget;
   });
   const avgAttendance = totalRecords > 0 ? Math.round((totalAttended / totalRecords) * 100) : 0;
 
@@ -103,13 +91,9 @@ export default function AdminOverview({ onNavigate }) {
     let allTotalAssigned = 0;
 
     overviewFilteredEvents.forEach(ev => {
-      const eventAtt = attendance[ev.id] || attendance[Number(ev.id)] || {};
-      Object.entries(eventAtt).forEach(([jId, status]) => {
-        allTotalAssigned++;
-        if (status === 'HADIR' || status === 'DARING') {
-          allHadirCount++;
-        }
-      });
+      const stats = calculateEventAttendanceStats(ev, attendance, jamaahList, categories, events);
+      allHadirCount += stats.totalHadir;
+      allTotalAssigned += stats.totalTarget;
     });
 
     const allRate = allTotalAssigned > 0 ? Math.round((allHadirCount / allTotalAssigned) * 100) : 0;
@@ -126,20 +110,38 @@ export default function AdminOverview({ onNavigate }) {
     };
 
     const catList = categories.map(cat => {
-      const members = jamaahList.filter(j => j.categoryIds && j.categoryIds.includes(cat.id));
+      const members = jamaahList.filter(j => j.isActive && (j.categoryIds || []).includes(cat.id));
       const memberIds = new Set(members.map(m => m.id));
 
       let hadirCount = 0;
       let totalAssigned = 0;
 
       overviewFilteredEvents.forEach(ev => {
-        const eventAtt = attendance[ev.id] || attendance[Number(ev.id)] || {};
-        Object.entries(eventAtt).forEach(([jId, status]) => {
-          if (memberIds.has(Number(jId))) {
-            totalAssigned++;
-            if (status === 'HADIR' || status === 'DARING') {
-              hadirCount++;
+        const eligible = getEligibleJamaahForEvent(ev, jamaahList, categories);
+        const catEligible = eligible.filter(p => memberIds.has(p.id));
+        if (catEligible.length === 0) return;
+
+        totalAssigned += catEligible.length;
+        const evAtt = attendance[ev.id] || attendance[Number(ev.id)] || {};
+        const evDateStr = ev.tanggal ? String(ev.tanggal).split('T')[0] : '';
+
+        catEligible.forEach(p => {
+          let s = evAtt[p.id];
+          if (!s && evDateStr && Array.isArray(events) && events.length > 0) {
+            const otherAttended = events.some(oe => {
+              if (!oe || oe.id === ev.id) return false;
+              const od = oe.tanggal ? String(oe.tanggal).split('T')[0] : '';
+              if (od !== evDateStr) return false;
+              const oAtt = attendance[oe.id] || attendance[Number(oe.id)] || {};
+              return oAtt[p.id] === 'HADIR' || oAtt[p.id] === 'DARING';
+            });
+            if (otherAttended) {
+              s = 'HADIR';
             }
+          }
+
+          if (s === 'HADIR' || s === 'DARING') {
+            hadirCount++;
           }
         });
       });
@@ -157,27 +159,24 @@ export default function AdminOverview({ onNavigate }) {
     });
 
     return [overallCard, ...catList];
-  }, [categories, jamaahList, attendance, overviewFilteredEvents]);
+  }, [categories, jamaahList, attendance, overviewFilteredEvents, events]);
 
   // Daftar acara untuk tabel rekapitulasi (disortir dan difilter)
   const eventRecapList = useMemo(() => {
     const list = overviewFilteredEvents.map(event => {
-      const att = Object.values(attendance[event.id] || attendance[Number(event.id)] || {});
-      const hadir = att.filter(s => s === 'HADIR').length;
-      const daring = att.filter(s => s === 'DARING').length;
-      const izin = att.filter(s => s === 'IZIN' || s === 'SAKIT').length;
-      const totalTercatat = att.length;
-      const totalHadir = hadir + daring;
-      const rate = totalTercatat > 0 ? Math.round((totalHadir / totalTercatat) * 100) : 0;
+      const stats = calculateEventAttendanceStats(event, attendance, jamaahList, categories, events);
 
       return {
         ...event,
-        hadir,
-        daring,
-        izin,
-        totalTercatat,
-        totalHadir,
-        rate,
+        hadir: stats.hadir,
+        daring: stats.daring,
+        izin: stats.izin + stats.sakit,
+        sakit: stats.sakit,
+        alpa: stats.alpa,
+        totalTercatat: stats.totalTarget,
+        totalTarget: stats.totalTarget,
+        totalHadir: stats.totalHadir,
+        rate: stats.rate,
       };
     });
 
@@ -609,7 +608,7 @@ export default function AdminOverview({ onNavigate }) {
               ))
             ) : (
               <div className="text-center py-8 text-slate-400 text-xs px-4 space-y-2">
-                <p>Tidak ada kegiatan pengajian pada periode {overviewPeriodInfo.label}.</p>
+                <p>Tidak ada kegiatan agenda pada periode {overviewPeriodInfo.label}.</p>
                 {overviewPeriodType !== 'ALL' && (
                   <button
                     onClick={() => {

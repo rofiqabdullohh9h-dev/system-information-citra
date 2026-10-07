@@ -9,6 +9,7 @@ import {
   Users
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
+import { getEligibleJamaahForEvent } from '../utils/attendanceUtils';
 
 // Timezone-safe local date string (YYYY-MM-DD)
 const getLocalDateStr = (d) => {
@@ -307,19 +308,8 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
 
   const eligibleJamaah = useMemo(() => {
     if (!currentEvent) return [];
-    return jamaahList.filter(person => {
-      if (!person.isActive) return false;
-
-      // 1. Filter Jenis Kelamin Target Acara
-      if (targetGender === 'L' && person.jenis_kelamin !== 'L') return false;
-      if (targetGender === 'P' && person.jenis_kelamin !== 'P') return false;
-
-      // 2. Filter Kategori Target Acara (Multi-Kategori)
-      if (isAllCategories) return true;
-      const userCats = person.categoryIds || (person.categoryId ? [person.categoryId] : []);
-      return userCats.some(cid => targetCategoryIds.includes(Number(cid)));
-    });
-  }, [jamaahList, currentEvent, isAllCategories, targetCategoryIds, targetGender]);
+    return getEligibleJamaahForEvent(currentEvent, jamaahList, categories);
+  }, [jamaahList, currentEvent, categories]);
 
   // Filter by gender tab & live search (FR-ATTENDANCE-003, 004)
   const displayedJamaah = useMemo(() => {

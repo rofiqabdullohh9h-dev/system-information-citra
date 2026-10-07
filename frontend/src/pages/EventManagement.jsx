@@ -73,10 +73,14 @@ export default function EventManagement() {
   const openEditModal = (event) => {
     let catIds = [];
     if (event.targetCategoryIds && Array.isArray(event.targetCategoryIds) && event.targetCategoryIds.length > 0) {
-      catIds = event.targetCategoryIds;
+      catIds = event.targetCategoryIds.map(Number);
     } else if (event.targetCategories && Array.isArray(event.targetCategories) && event.targetCategories.length > 0) {
-      catIds = event.targetCategories.map(tc => tc.categoryId || tc.id);
+      catIds = event.targetCategories.map(tc => Number(tc.categoryId || tc.id));
     } else {
+      catIds = categories.map(c => c.id);
+    }
+
+    if (catIds.includes(1) && !categories.some(c => c.id === 1)) {
       catIds = categories.map(c => c.id);
     }
 

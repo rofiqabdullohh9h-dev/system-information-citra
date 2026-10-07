@@ -364,33 +364,9 @@ export const toggleAdminStatus = async (req, res, next) => {
 };
 
 export const resetDatabase = async (req, res, next) => {
-  try {
-    // 1. Kosongkan seluruh data operasional & pengujian (termasuk kategori)
-    await supabase.from('Attendance').delete().neq('id', 0);
-    await supabase.from('EventCategory').delete().neq('eventId', 0);
-    await supabase.from('Event').delete().neq('id', 0);
-    await supabase.from('JamaahCategory').delete().neq('jamaahId', 0);
-    await supabase.from('Jamaah').delete().neq('id', 0);
-    await supabase.from('Category').delete().neq('id', 0);
-    await supabase.from('AuditLog').delete().neq('id', 0);
-
-    // PENTING: TABEL ADMIN SAMA SEKALI TIDAK DISENTUH! AKUN PENGURUS 100% TETAP UTUH & AMAN.
-
-    // 2. Catat Log Audit Reset
-    await logAudit({
-      adminId: req.user?.id || null,
-      adminNama: req.user?.nama || 'Pengurus',
-      action: 'RESET_DATA',
-      target: 'Database',
-      details: 'Mereset database ke kondisi bersih (kosong). Seluruh kategori, jadwal, absensi, dan jamaah dikosongkan. Akun pengurus tetap aman.',
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'Seluruh data (kategori, jadwal, absensi, jamaah) berhasil dikosongkan. Akun pengurus tetap aman.',
-    });
-  } catch (error) {
-    next(error);
-  }
+  return res.status(403).json({
+    success: false,
+    message: 'Fitur reset database telah dinonaktifkan secara permanen untuk melindungi data operasional real.',
+  });
 };
 

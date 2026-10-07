@@ -666,64 +666,14 @@ export const useAppStore = create((set, get) => ({
   },
 
   // =========================================================================
-  // TOMBOL RESET DATA UJI COBA
+  // RESET DATA (Dinonaktifkan demi keamanan data real produksi)
   // =========================================================================
   resetDatabase: async () => {
-    set({ isResetting: true });
-    try {
-      // 1. Panggil backend API untuk reset data transaksi di database Supabase
-      try {
-        await api.resetData();
-      } catch (err) {
-        console.warn('API resetData failed or Supabase not yet live:', err.message);
-      }
-
-      // 2. Kosongkan seluruh data operasional di local state (termasuk kategori)
-      set({
-        categories: [],
-        events: [],
-        jamaah: [],
-        attendance: {},
-        auditLogs: [],
-        attendanceDrafts: {},
-      });
-
-      // 3. Bersihkan penyimpanan browser
-      localStorage.removeItem('siap_categories');
-      localStorage.removeItem('siap_events');
-      localStorage.removeItem('siap_jamaah');
-      localStorage.removeItem('siap_attendance');
-      localStorage.removeItem('siap_auditLogs');
-      localStorage.removeItem('siap_attendanceDrafts');
-
-      // 4. Catat aktivitas reset ke audit log baru
-      const user = get().currentUser || { id: 'admin-001', nama: 'Pengurus' };
-      const resetLog = {
-        id: `log-reset-${Date.now()}`,
-        adminId: user.id,
-        adminNama: user.nama,
-        action: 'RESET_DATA',
-        target: 'Database Pengujian',
-        timestamp: formatDateTimeWIB(new Date()),
-        details: 'Seluruh data (kategori, jadwal, jamaah, absensi, audit log) berhasil dibersihkan ke kondisi kosong. Akun pengurus tetap aman.',
-      };
-      set({ auditLogs: [resetLog] });
-      saveItem('auditLogs', [resetLog]);
-      notifyDataChanged();
-
-      return {
-        success: true,
-        message: 'Seluruh kategori dan data pengujian berhasil dikosongkan. Akun pengurus tetap aman.',
-      };
-    } catch (error) {
-      console.error('Reset database failed:', error);
-      return {
-        success: false,
-        message: error.message || 'Gagal mereset data.',
-      };
-    } finally {
-      set({ isResetting: false });
-    }
+    console.warn('Fitur reset database telah dinonaktifkan secara permanen.');
+    return {
+      success: false,
+      message: 'Fitur reset database telah dinonaktifkan secara permanen untuk menjaga data riil.',
+    };
   },
 
   // =========================================================================

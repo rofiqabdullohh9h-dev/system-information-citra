@@ -16,6 +16,10 @@ import {
   INDONESIAN_MONTHS,
   formatDateWIB
 } from '../utils/dateUtils';
+import {
+  getEligibleJamaahForEvent,
+  calculateEventAttendanceStats
+} from '../utils/attendanceUtils';
 
 export default function PublicDashboard({ activeTab, setActiveTab }) {
   const events = useAppStore((state) => state.events);
@@ -105,13 +109,9 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
     let allTotalAssigned = 0;
 
     statsPeriodEvents.forEach(ev => {
-      const eventAtt = attendance[ev.id] || attendance[Number(ev.id)] || {};
-      Object.entries(eventAtt).forEach(([jId, status]) => {
-        allTotalAssigned++;
-        if (status === 'HADIR' || status === 'DARING') {
-          allHadirCount++;
-        }
-      });
+      const stats = calculateEventAttendanceStats(ev, attendance, jamaahList, categories, events);
+      allHadirCount += stats.totalHadir;
+      allTotalAssigned += stats.totalTarget;
     });
 
     const allRate = allTotalAssigned > 0 ? Math.round((allHadirCount / allTotalAssigned) * 100) : 0;
@@ -132,7 +132,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
         overallCard,
         ...categories.map(cat => ({
           ...cat,
-          totalMembers: cat.memberCount || 0,
+          totalMembers: cat.memberCount || jamaahList.filter(j => j.isActive && (j.categoryIds || []).includes(cat.id)).length,
           hadirCount: 0,
           totalAssigned: 0,
           rate: 0,
@@ -143,7 +143,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
 
     const catList = categories.map(cat => {
       // Find members of this category
-      const members = jamaahList.filter(j => j.categoryIds && j.categoryIds.includes(cat.id));
+      const members = jamaahList.filter(j => j.isActive && (j.categoryIds || []).includes(cat.id));
       const memberIds = new Set(members.map(m => m.id));
 
       // Hitung kehadiran pada acara-acara dalam rentang periode terpilih
@@ -151,13 +151,31 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
       let totalAssigned = 0;
 
       statsPeriodEvents.forEach(ev => {
-        const eventAtt = attendance[ev.id] || attendance[Number(ev.id)] || {};
-        Object.entries(eventAtt).forEach(([jId, status]) => {
-          if (memberIds.has(Number(jId))) {
-            totalAssigned++;
-            if (status === 'HADIR' || status === 'DARING') {
-              hadirCount++;
+        const eligible = getEligibleJamaahForEvent(ev, jamaahList, categories);
+        const catEligible = eligible.filter(p => memberIds.has(p.id));
+        if (catEligible.length === 0) return;
+
+        totalAssigned += catEligible.length;
+        const evAtt = attendance[ev.id] || attendance[Number(ev.id)] || {};
+        const evDateStr = ev.tanggal ? String(ev.tanggal).split('T')[0] : '';
+
+        catEligible.forEach(p => {
+          let s = evAtt[p.id];
+          if (!s && evDateStr && Array.isArray(events) && events.length > 0) {
+            const otherAttended = events.some(oe => {
+              if (!oe || oe.id === ev.id) return false;
+              const od = oe.tanggal ? String(oe.tanggal).split('T')[0] : '';
+              if (od !== evDateStr) return false;
+              const oAtt = attendance[oe.id] || attendance[Number(oe.id)] || {};
+              return oAtt[p.id] === 'HADIR' || oAtt[p.id] === 'DARING';
+            });
+            if (otherAttended) {
+              s = 'HADIR';
             }
+          }
+
+          if (s === 'HADIR' || s === 'DARING') {
+            hadirCount++;
           }
         });
       });
@@ -175,29 +193,26 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
     });
 
     return [overallCard, ...catList];
-  }, [categories, jamaahList, attendance, statsPeriodEvents, activeTab]);
+  }, [categories, jamaahList, attendance, statsPeriodEvents, activeTab, events]);
 
   // Daftar acara untuk tabel rekapitulasi (disortir dan difilter periode)
   const eventRecapList = useMemo(() => {
     const list = statsPeriodEvents
       .filter(e => e.show_statistics !== false)
       .map(event => {
-        const att = Object.values(attendance[event.id] || attendance[Number(event.id)] || {});
-        const hadir = att.filter(s => s === 'HADIR').length;
-        const daring = att.filter(s => s === 'DARING').length;
-        const izin = att.filter(s => s === 'IZIN' || s === 'SAKIT').length;
-        const totalTercatat = att.length;
-        const totalHadir = hadir + daring;
-        const rate = totalTercatat > 0 ? Math.round((totalHadir / totalTercatat) * 100) : 0;
+        const stats = calculateEventAttendanceStats(event, attendance, jamaahList, categories, events);
 
         return {
           ...event,
-          hadir,
-          daring,
-          izin,
-          totalTercatat,
-          totalHadir,
-          rate,
+          hadir: stats.hadir,
+          daring: stats.daring,
+          izin: stats.izin + stats.sakit,
+          sakit: stats.sakit,
+          alpa: stats.alpa,
+          totalTercatat: stats.totalTarget,
+          totalTarget: stats.totalTarget,
+          totalHadir: stats.totalHadir,
+          rate: stats.rate,
         };
       });
 
@@ -223,7 +238,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
       }
       return 0;
     });
-  }, [statsPeriodEvents, attendance, statsSortOrder]);
+  }, [statsPeriodEvents, attendance, jamaahList, categories, events, statsSortOrder]);
 
   // Ringkasan akumulatif periode statistik
   const statsSummary = useMemo(() => {
@@ -232,7 +247,7 @@ export default function PublicDashboard({ activeTab, setActiveTab }) {
 
     eventRecapList.forEach(e => {
       totalHadirSemua += e.totalHadir;
-      totalKesempatan += e.totalTercatat;
+      totalKesempatan += e.totalTarget;
     });
 
     const avgRate = totalKesempatan > 0 ? Math.round((totalHadirSemua / totalKesempatan) * 100) : 0;

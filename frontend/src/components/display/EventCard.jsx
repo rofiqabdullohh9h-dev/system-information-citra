@@ -2,11 +2,13 @@ import React, { useMemo } from 'react';
 import { Calendar, Clock, MapPin, User, Users, Share2, Eye, CheckCircle2 } from 'lucide-react';
 import { useAppStore } from '../../store/store';
 import { generateEventShareText } from '../../utils/shareUtils';
+import { calculateEventAttendanceStats } from '../../utils/attendanceUtils';
 
 function EventCard({ event, onOpenDetail }) {
   const categories = useAppStore((state) => state.categories);
   const attendance = useAppStore((state) => state.attendance);
   const jamaahList = useAppStore((state) => state.jamaah);
+  const events = useAppStore((state) => state.events);
 
   // Format Indonesian date
   const formatIndoDate = (dateStr) => {
@@ -25,58 +27,37 @@ function EventCard({ event, onOpenDetail }) {
 
   // Find category names (memoized)
   const eventCategories = useMemo(() => {
-    return (event.targetCategoryIds || []).map(id => {
-      return categories.find(c => c.id === id);
-    }).filter(Boolean);
-  }, [event.targetCategoryIds, categories]);
+    let ids = [];
+    if (Array.isArray(event.targetCategoryIds) && event.targetCategoryIds.length > 0) {
+      ids = event.targetCategoryIds.map(Number);
+    } else if (Array.isArray(event.targetCategories) && event.targetCategories.length > 0) {
+      ids = event.targetCategories.map(tc => Number(tc.categoryId || tc.id || tc));
+    }
+    return ids.map(id => categories.find(c => c.id === id)).filter(Boolean);
+  }, [event.targetCategoryIds, event.targetCategories, categories]);
 
-  const targetCats = event.targetCategoryIds || [1];
-  const targetCatId = targetCats[0] || 1;
-  const isGeneral = targetCatId === 1;
+  const isAllCategories = (
+    eventCategories.length === 0 ||
+    eventCategories.some(c => c.id === 1) ||
+    (categories.length > 0 && eventCategories.length >= categories.length)
+  );
+
   const targetGender = event.target_gender || event.targetGender || 'ALL';
 
-  // Only calculate heavy attendance statistics if show_statistics is enabled
+  // Check if attendance has been recorded for this event
+  const attendanceMap = (event.id && attendance[event.id]) || (event.id && attendance[Number(event.id)]) || {};
+  const hasAttendanceRecords = Boolean(attendanceMap && Object.keys(attendanceMap).length > 0);
+
+  // Calculate accurate attendance statistics
   const stats = useMemo(() => {
     if (!event.show_statistics || jamaahList.length === 0) return null;
+    return calculateEventAttendanceStats(event, attendance, jamaahList, categories, events);
+  }, [event, attendance, jamaahList, categories, events]);
 
-    const eligibleJamaah = jamaahList.filter(person => {
-      if (!person.isActive) return false;
-      if (targetGender === 'L' && person.jenis_kelamin !== 'L') return false;
-      if (targetGender === 'P' && person.jenis_kelamin !== 'P') return false;
-      if (isGeneral) return true;
-      return (person.categoryIds || []).includes(targetCatId);
-    });
-
-    const eventAttendance = attendance[event.id] || {};
-    let totalHadir = 0;
-    let totalDaring = 0;
-    let totalIzin = 0;
-    let totalSakit = 0;
-    let totalAlpa = 0;
-
-    eligibleJamaah.forEach(j => {
-      const s = eventAttendance[j.id];
-      if (s === 'HADIR') totalHadir++;
-      else if (s === 'DARING') totalDaring++;
-      else if (s === 'IZIN') totalIzin++;
-      else if (s === 'SAKIT') totalSakit++;
-      else totalAlpa++;
-    });
-
-    return {
-      totalRecord: eligibleJamaah.length,
-      totalHadir,
-      totalDaring,
-      totalIzin,
-      totalSakit,
-      totalAlpa,
-    };
-  }, [event.show_statistics, event.id, event.targetCategoryIds, targetCatId, isGeneral, targetGender, jamaahList, attendance]);
-
-  const totalRecord = stats?.totalRecord || 0;
-  const totalHadir = stats?.totalHadir || 0;
-  const totalDaring = stats?.totalDaring || 0;
-  const totalIzin = stats?.totalIzin || 0;
+  const totalRecord = stats?.totalTarget || 0;
+  const totalHadir = stats?.hadir || 0;
+  const totalDaring = stats?.daring || 0;
+  const totalIzin = (stats?.izin || 0) + (stats?.sakit || 0);
 
   // WhatsApp share generator
   const handleShareWA = (e) => {
@@ -95,7 +76,11 @@ function EventCard({ event, onOpenDetail }) {
       <div className="p-5 sm:p-6 pb-4">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="flex flex-wrap items-center gap-1.5">
-            {eventCategories.length > 0 ? (
+            {isAllCategories ? (
+              <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-brand-700 border border-emerald-200/70">
+                Semua Jamaah
+              </span>
+            ) : eventCategories.length > 0 ? (
               eventCategories.map(cat => (
                 <span 
                   key={cat.id}
@@ -137,7 +122,7 @@ function EventCard({ event, onOpenDetail }) {
 
         {/* Description snippet */}
         <p className="text-xs sm:text-sm text-slate-600 mt-2.5 line-clamp-2 leading-relaxed">
-          {event.deskripsi || 'Jadwal pengajian rutin.'}
+          {event.deskripsi || 'Agenda kegiatan rutin.'}
         </p>
 
         {/* Meta Info: Date, Time, Location */}
@@ -158,27 +143,36 @@ function EventCard({ event, onOpenDetail }) {
       </div>
 
       {/* Attendance Stats Preview (if show_statistics is enabled) */}
-      {event.show_statistics && totalRecord > 0 && (
+      {event.show_statistics && (
         <div className="px-5 sm:px-6 py-2.5 bg-slate-50 border-t border-slate-100/90 text-xs flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-500">Kehadiran:</span>
-            <span className="font-semibold text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded">
-              {totalHadir} Hadir
-            </span>
-            {totalDaring > 0 && (
-              <span className="font-medium text-sky-700 bg-sky-100/60 px-2 py-0.5 rounded">
-                {totalDaring} Daring
+          {hasAttendanceRecords ? (
+            <>
+              <div className="flex items-center gap-3">
+                <span className="text-slate-500">Kehadiran:</span>
+                <span className="font-semibold text-emerald-700 bg-emerald-100/60 px-2 py-0.5 rounded">
+                  {totalHadir} Hadir
+                </span>
+                {totalDaring > 0 && (
+                  <span className="font-medium text-sky-700 bg-sky-100/60 px-2 py-0.5 rounded">
+                    {totalDaring} Daring
+                  </span>
+                )}
+                {totalIzin > 0 && (
+                  <span className="font-medium text-amber-700 bg-amber-100/60 px-2 py-0.5 rounded">
+                    {totalIzin} Izin
+                  </span>
+                )}
+              </div>
+              <span className="text-[11px] text-slate-400 font-medium">
+                Total {totalRecord}
               </span>
-            )}
-            {totalIzin > 0 && (
-              <span className="font-medium text-amber-700 bg-amber-100/60 px-2 py-0.5 rounded">
-                {totalIzin} Izin
-              </span>
-            )}
-          </div>
-          <span className="text-[11px] text-slate-400 font-medium">
-            Total {totalRecord}
-          </span>
+            </>
+          ) : (
+            <div className="flex items-center justify-between w-full text-slate-400">
+              <span className="text-[11px] italic">Presensi belum diisi</span>
+              <span className="text-[11px] font-medium text-slate-400">Sasaran {totalRecord} Jamaah</span>
+            </div>
+          )}
         </div>
       )}
 

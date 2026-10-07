@@ -23,6 +23,7 @@ import {
   INDONESIAN_MONTHS,
   formatDateWIB
 } from '../utils/dateUtils';
+import { getEligibleJamaahForEvent } from '../utils/attendanceUtils';
 
 export default function Analytics() {
   const events = useAppStore((state) => state.events);
@@ -116,19 +117,7 @@ export default function Analytics() {
       const records = attendance[ev.id] || attendance[Number(ev.id)] || {};
       if (Object.keys(records).length === 0) return;
 
-      const targetCats = (ev.targetCategoryIds && ev.targetCategoryIds.length > 0)
-        ? ev.targetCategoryIds
-        : (ev.targetCategoryId ? [ev.targetCategoryId] : [1]);
-      const isGeneral = targetCats.includes(1) || (categories.length > 0 && targetCats.length >= categories.length);
-      const targetGender = ev.target_gender || ev.targetGender || (ev.deskripsi && ev.deskripsi.includes('<!--gender:L-->') ? 'L' : ev.deskripsi && ev.deskripsi.includes('<!--gender:P-->') ? 'P' : 'ALL');
-
-      const eligible = jamaahList.filter(j => {
-        if (!j.isActive) return false;
-        if (targetGender === 'L' && j.jenis_kelamin !== 'L') return false;
-        if (targetGender === 'P' && j.jenis_kelamin !== 'P') return false;
-        if (isGeneral) return true;
-        return (j.categoryIds || []).some(cid => targetCats.includes(cid));
-      });
+      const eligible = getEligibleJamaahForEvent(ev, jamaahList, categories);
 
       const sameDateStr = getLocalDateStr(ev.tanggal);
 
