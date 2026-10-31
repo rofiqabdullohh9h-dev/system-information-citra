@@ -254,15 +254,16 @@ export default function AttendanceForm({ initialEventId: propInitialEventId }) {
       syncAttendance(selectedEventId);
     }
 
-    // 3. Polling latar belakang berkala (setiap 3 detik) agar input dari pengurus lain langsung muncul otomatis
+    // 3. Polling latar belakang khusus halaman absensi (setiap 12 detik, hanya saat tab sedang aktif/dilihat)
     const syncInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       if (syncAttendance) {
         syncAttendance(selectedEventId);
       }
-    }, 3000);
+    }, 12000);
 
     return () => clearInterval(syncInterval);
-  }, [selectedEventId]);
+  }, [selectedEventId, syncAttendance]);
 
   // Sinkronisasi otomatis saat data store attendance berubah (misal dari hasil polling background)
   useEffect(() => {

@@ -44,7 +44,7 @@ export const login = async (req, res, next) => {
       .update({ lastLogin: new Date().toISOString() })
       .eq('id', admin.id);
 
-    // Generate JWT (Expired 2h)
+    // Generate JWT (Expired 3h)
     const token = generateToken({
       id: admin.id,
       username: admin.username,

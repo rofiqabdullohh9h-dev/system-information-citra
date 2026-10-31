@@ -13,7 +13,35 @@ const getHeaders = (isFormData = false) => {
   return headers;
 };
 
+let onSessionExpiredCallback = null;
+
+export const setSessionExpiredHandler = (callback) => {
+  onSessionExpiredCallback = callback;
+};
+
+const notifySessionExpired = (message) => {
+  if (typeof onSessionExpiredCallback === 'function') {
+    onSessionExpiredCallback(message);
+  } else if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('siap:session-expired', { detail: { message } }));
+  }
+};
+
 const safeJson = async (res) => {
+  const isAuthLogin = res.url && res.url.includes('/auth/login');
+
+  if (res.status === 401 && !isAuthLogin) {
+    let msg = 'Sesi login Anda telah berakhir (3 jam). Silakan masuk kembali.';
+    try {
+      const cloned = res.clone();
+      const errData = await cloned.json();
+      if (errData?.message) {
+        msg = errData.message;
+      }
+    } catch {}
+    notifySessionExpired(msg);
+  }
+
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
     const text = await res.text();

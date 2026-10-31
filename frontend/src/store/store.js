@@ -1,8 +1,7 @@
 import { create } from 'zustand';
-import { api } from '../services/api';
+import { api, setSessionExpiredHandler } from '../services/api';
 import { formatDateTimeWIB } from '../utils/dateUtils';
-
-
+import { isTokenExpired } from '../utils/authUtils';
 
 // Helper to load/save in localStorage
 const getSaved = (key, fallback) => {
@@ -28,7 +27,16 @@ const getInitialPortalMode = () => {
   const path = window.location.pathname.toLowerCase();
   if (path.startsWith('/penggurus') || path.startsWith('/pengurus') || path.startsWith('/admin')) {
     const savedUser = getSaved('currentUser', null);
-    return savedUser ? 'admin' : 'login';
+    const token = localStorage.getItem('siap_token');
+    if (savedUser && token && !isTokenExpired(token)) {
+      return 'admin';
+    }
+    // Jika token kedaluwarsa, bersihkan storage otomatis
+    if (token && isTokenExpired(token)) {
+      localStorage.removeItem('siap_token');
+      localStorage.removeItem('siap_currentUser');
+    }
+    return 'login';
   }
   return 'public';
 };
@@ -79,6 +87,19 @@ export const useAppStore = create((set, get) => ({
 
   // Auth state
   currentUser: getSaved('currentUser', null),
+  sessionExpiredMessage: null,
+  setSessionExpiredMessage: (msg) => set({ sessionExpiredMessage: msg }),
+
+  handleSessionExpired: (msg = 'Sesi login Anda telah berakhir (3 jam). Silakan masuk kembali.') => {
+    localStorage.removeItem('siap_token');
+    localStorage.removeItem('siap_currentUser');
+    syncPortalUrl('login');
+    set({
+      currentUser: null,
+      portalMode: 'login',
+      sessionExpiredMessage: msg,
+    });
+  },
   
   // Current active view / portal ('public' | 'admin' | 'login')
   portalMode: getInitialPortalMode(),
@@ -102,8 +123,8 @@ export const useAppStore = create((set, get) => ({
       return;
     }
 
-    // Throttle automatic/background polling (minimal 5 detik antar-pemanggilan otomatis)
-    if (!isManual && useAppStore.__lastFetchTime && now - useAppStore.__lastFetchTime < 5000) {
+    // Throttle pemanggilan otomatis saat tab aktif kembali (minimal 15 detik antar-pemanggilan otomatis)
+    if (!isManual && useAppStore.__lastFetchTime && now - useAppStore.__lastFetchTime < 15000) {
       return;
     }
 
@@ -238,6 +259,7 @@ export const useAppStore = create((set, get) => ({
   // ACTIONS: AUTH
   // =========================================================================
   login: async (username, password) => {
+    set({ sessionExpiredMessage: null });
     const cleanUsername = username.trim().toLowerCase();
     
     // First try backend API
@@ -276,7 +298,7 @@ export const useAppStore = create((set, get) => ({
       return { success: false, message: 'Username tidak ditemukan atau akun dinonaktifkan.' };
     }
     if (password !== 'admin123' && password !== 'password') {
-      return { success: false, message: 'Password salah. (Gunakan kata sandi: admin123)' };
+      return { success: false, message: 'Kata sandi tidak sesuai.' };
     }
 
     const updatedUser = { ...user, lastLogin: formatDateTimeWIB(new Date()) };
@@ -729,3 +751,8 @@ export const useAppStore = create((set, get) => ({
     }
   },
 }));
+
+// Hubungkan session expired interceptor dari API ke useAppStore
+setSessionExpiredHandler((msg) => {
+  useAppStore.getState().handleSessionExpired(msg);
+});

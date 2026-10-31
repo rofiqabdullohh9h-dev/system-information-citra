@@ -4,6 +4,7 @@ import PublicHeader from './components/common/PublicHeader';
 import Footer from './components/common/Footer';
 import PublicDashboard from './pages/PublicDashboard';
 import { lazyWithRetry } from './utils/lazyWithRetry';
+import { isTokenExpired } from './utils/authUtils';
 
 const AdminDashboard = lazyWithRetry(() => import('./pages/AdminDashboard'));
 const LoginPage = lazyWithRetry(() => import('./pages/LoginPage'));
@@ -60,21 +61,43 @@ export default function App() {
   const setPortalMode = useAppStore((state) => state.setPortalMode);
   const currentUser = useAppStore((state) => state.currentUser);
   const fetchData = useAppStore((state) => state.fetchData);
+  const handleSessionExpired = useAppStore((state) => state.handleSessionExpired);
 
   const [publicActiveTab, setPublicActiveTab] = useState('jadwal');
+
+  // Helper periksa apakah sesi pengurus telah berakhir
+  const checkTokenExpiry = () => {
+    const token = localStorage.getItem('siap_token');
+    if (currentUser && token && isTokenExpired(token)) {
+      handleSessionExpired('Sesi login Anda telah berakhir (3 jam). Silakan masuk kembali.');
+      return true;
+    }
+    return false;
+  };
 
   // 1. Sync browser URL and handle Back/Forward browser navigation
   useEffect(() => {
     const currentPath = window.location.pathname.toLowerCase();
     if (currentPath.startsWith('/pengurus') || currentPath.startsWith('/admin')) {
-      window.history.replaceState({ mode: currentUser ? 'admin' : 'login' }, '', '/penggurus');
+      const token = localStorage.getItem('siap_token');
+      const isExpired = token && isTokenExpired(token);
+      window.history.replaceState({ mode: (currentUser && !isExpired) ? 'admin' : 'login' }, '', '/penggurus');
     }
 
     const handlePopState = () => {
       const path = window.location.pathname.toLowerCase();
       if (path.startsWith('/penggurus') || path.startsWith('/pengurus') || path.startsWith('/admin')) {
+        const token = localStorage.getItem('siap_token');
         const user = useAppStore.getState().currentUser;
-        setPortalMode(user ? 'admin' : 'login');
+        if (user && token && !isTokenExpired(token)) {
+          setPortalMode('admin');
+        } else {
+          if (token && isTokenExpired(token)) {
+            handleSessionExpired('Sesi login Anda telah berakhir (3 jam). Silakan masuk kembali.');
+          } else {
+            setPortalMode('login');
+          }
+        }
       } else {
         setPortalMode('public');
       }
@@ -82,24 +105,33 @@ export default function App() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [currentUser, setPortalMode]);
+  }, [currentUser, setPortalMode, handleSessionExpired]);
 
-  // 2. Sync data on mount, window focus / visibility change, and real-time multi-admin polling
+  // 2. Sync data on mount, window focus / visibility change, and local multi-tab instant sync
   useEffect(() => {
+    if (checkTokenExpiry()) return;
     fetchData();
 
-    // Trigger sync saat tab aktif kembali
+    // Trigger sync saat tab aktif kembali (hemat credit: hanya dipanggil saat pengguna kembali ke tab)
     const handleSync = () => {
       if (!document.hidden) {
+        if (checkTokenExpiry()) return;
         fetchData();
       }
     };
     window.addEventListener('focus', handleSync);
     document.addEventListener('visibilitychange', handleSync);
 
-    // Sinkronisasi instan antar tab/jendela (0 ms) via storage event & BroadcastChannel
+    // Tangani event custom jika interceptor API mendeteksi 401
+    const handleCustomSessionExpired = (e) => {
+      handleSessionExpired(e?.detail?.message);
+    };
+    window.addEventListener('siap:session-expired', handleCustomSessionExpired);
+
+    // Sinkronisasi instan antar tab/jendela di browser yang sama (0 ms, 0 network cost)
     const handleStorage = (e) => {
       if (e.key === 'siap_last_mutation' || e.key?.startsWith('siap_')) {
+        if (checkTokenExpiry()) return;
         fetchData();
       }
     };
@@ -111,28 +143,21 @@ export default function App() {
         bc = new BroadcastChannel('siap_channel');
         bc.onmessage = (event) => {
           if (event.data?.type === 'DATA_SYNC') {
+            if (checkTokenExpiry()) return;
             fetchData();
           }
         };
       } catch {}
     }
 
-    // Polling berkala (4 detik saat login pengurus, 8 detik saat mode publik)
-    const pollIntervalMs = currentUser ? 4000 : 8000;
-    const interval = setInterval(() => {
-      if (!document.hidden) {
-        fetchData();
-      }
-    }, pollIntervalMs);
-
     return () => {
       window.removeEventListener('focus', handleSync);
       window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('siap:session-expired', handleCustomSessionExpired);
       document.removeEventListener('visibilitychange', handleSync);
-      clearInterval(interval);
       if (bc) bc.close();
     };
-  }, [currentUser, fetchData]);
+  }, [currentUser, fetchData, handleSessionExpired]);
 
   return (
     <ErrorBoundary>

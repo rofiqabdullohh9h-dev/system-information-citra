@@ -7,7 +7,9 @@ import {
   Eye,
   EyeOff,
   LogIn,
-  ShieldCheck
+  ShieldCheck,
+  Clock,
+  X
 } from 'lucide-react';
 import { useAppStore } from '../store/store';
 
@@ -20,10 +22,13 @@ export default function LoginPage() {
 
   const login = useAppStore((state) => state.login);
   const setPortalMode = useAppStore((state) => state.setPortalMode);
+  const sessionExpiredMessage = useAppStore((state) => state.sessionExpiredMessage);
+  const setSessionExpiredMessage = useAppStore((state) => state.setSessionExpiredMessage);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setErrorMessage('');
+    if (sessionExpiredMessage) setSessionExpiredMessage(null);
 
     if (!username.trim() || !password) {
       setErrorMessage('Harap masukkan username dan kata sandi.');
@@ -50,7 +55,10 @@ export default function LoginPage() {
       {/* Top Header Navigation */}
       <div className="max-w-md w-full mx-auto">
         <button
-          onClick={() => setPortalMode('public')}
+          onClick={() => {
+            if (sessionExpiredMessage) setSessionExpiredMessage(null);
+            setPortalMode('public');
+          }}
           className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-slate-600 hover:text-emerald-700 transition-colors py-2 px-3 rounded-lg hover:bg-slate-200/60"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -75,6 +83,24 @@ export default function LoginPage() {
               </p>
             </div>
           </div>
+
+          {/* Session Expired Notice */}
+          {sessionExpiredMessage && !errorMessage && (
+            <div className="p-3.5 bg-amber-50 border border-amber-200/90 rounded-xl text-amber-800 text-xs flex items-start gap-2.5 animate-fade-in shadow-xs">
+              <Clock className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+              <div className="flex-1 leading-relaxed font-medium">
+                {sessionExpiredMessage}
+              </div>
+              <button
+                type="button"
+                onClick={() => setSessionExpiredMessage(null)}
+                className="text-amber-500 hover:text-amber-700 transition-colors p-0.5"
+                title="Tutup pemberitahuan"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Error Message */}
           {errorMessage && (

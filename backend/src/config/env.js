@@ -12,6 +12,6 @@ export const config = {
   supabaseUrl: (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim(),
   supabaseKey: (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '').trim(),
   jwtSecret: process.env.JWT_SECRET || 'citra_system_jwt_default_key',
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '3h',
   clientUrl: process.env.PUBLIC_SITE_URL || process.env.CLIENT_URL || '*',
 };
